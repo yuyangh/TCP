@@ -12,7 +12,7 @@ set(EDGE_TRIGGERED off)
 
 file(GLOB SOURCES data.h)
 file(GLOB READ_WRITE_QUEUE atomicops.h readerwriterqueue.h)
-file(GLOB RING_BUFFER ring_buffer.h common.h)
+file(GLOB RING_BUFFER ring_buffer.h ring_buffer.hpp common.h)
 
 IF (DEBUG_OUTPUT)
     ADD_DEFINITIONS(-DDEBUG_OUTPUT)
@@ -35,6 +35,9 @@ TARGET_LINK_LIBRARIES(server pthread)
 
 add_executable(epoll_server epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} worker.h)
 TARGET_LINK_LIBRARIES(epoll_server pthread)
+
+add_executable(multi_thread_epoll_server multi_thread_epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} worker.h)
+TARGET_LINK_LIBRARIES(multi_thread_epoll_server pthread)
 
 add_executable(client client.cpp client.h ${SOURCES})
 
