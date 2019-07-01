@@ -23,27 +23,29 @@
 #include <unordered_map>
 
 #include "data.h"
-#include "mullti_thread_worker.h"
+#include "ring_buffer.hpp"
 
 using namespace std;
 
-static const int NUM_WORKERS = 20;
+static const int NUM_WORKERS = 16;
 static const int ECHO_SERVER_PORT = 6000;
 static const int NUM_FD = 1200;
 static const int LISTEN_BACKLOG = 16;
 static const int MAX_EPOLL_EVENT_COUNT = (NUM_FD >> 2);
 static const int EPOLL_WAIT_TIMEOUT = -1;
+static const size_t MAX_QUEUE_SIZE = 100;
 
-static std::vector<Worker> works(NUM_WORKERS);
 static int epoll_fd, server_fd;
 static volatile bool RUNNING_FLAG = true;
 // event for the server
 static struct epoll_event event;
 
 static unsigned long long JobCount = 0;
-static unordered_map<int, Package> ClientInfoMap;
-// static unordered_map<int, ProcessStatus> FDProcessStatus;
+// static unordered_map<int, Package> ClientInfoMap;
+static Package ClientInfoArr[NUM_FD];
 static ProcessStatus FDProcessStatusArr[NUM_FD];
+// only 1 shared ring buffer
+static CarpLog::RingBuffer<struct epoll_event> EpollEventRingBuffer(MAX_QUEUE_SIZE);
 
 /*
  * function prototypes
@@ -71,27 +73,24 @@ void InitializeFDProcessStatusArr() {
 	}
 }
 
+void InitializeClientInfoArr() {
+	for (auto &item : ClientInfoArr) {
+		item = Package(-1);
+	}
+}
+
 // back end thread
 void ProcessJob(int i) {
 	while (true) {
-		struct epoll_event epollEvent = works[i].PopJob();
-		// if (epollEvent == nullptr) {
-		// 	continue;
-		// }
-
-#ifdef DEBUG_OUTPUT
-		printf("size of the queues[%d]: %d \n", i, (int) works[i].size_approx());
-#endif
-		
+		struct epoll_event epollEvent = EpollEventRingBuffer.Pop();
+		// deal with the epollEvent
 		if ((epollEvent.events) & EPOLLIN) {
 			// receive from the client
 			ReceivePackage(&epollEvent);
-			// works[i].popJob();
 		} else {
 			if ((epollEvent.events) & EPOLLOUT) {
 				// send to the client
 				SendResult(&epollEvent);
-				// works[i].popJob();
 			} else {
 				assert(false);
 			}
@@ -142,7 +141,7 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 #endif
 	
 	// store the received information
-	ClientInfoMap[epollEventFD] = (buffer);
+	ClientInfoArr[epollEventFD] = (buffer);
 
 #ifdef DEBUG_OUTPUT
 	printf("Store clientInfo: fd: %d, value:%d \n", epollEventFD, buffer.value.id);
@@ -163,11 +162,11 @@ void SendResult(struct epoll_event *epollEvent) {
 	
 	// send the response
 #ifdef DEBUG_OUTPUT
-	printf("Read ClientInfoMap: fd: %d, value:%d \n", epollEventFD,
-		   ClientInfoMap[epollEventFD].value.id);
+	printf("Read ClientInfoArr: fd: %d, value:%d \n", epollEventFD,
+		   ClientInfoArr[epollEventFD].value.id);
 #endif
 	
-	Result result(ClientInfoMap[epollEventFD].value.id);
+	Result result(ClientInfoArr[epollEventFD].value.id);
 	int sendbytes = send(epollEventFD, (char *) &result, sizeof(Result), 0);
 	if (sendbytes < 0) {
 		perror("send failed.\n");
@@ -234,9 +233,12 @@ void InitializeWorkers(std::vector<std::thread> &workers) {
 	}
 }
 
-// todo may optimzie as pass by reference
-inline void Polling(struct epoll_event epollEvent) {
-	works[JobCount % NUM_WORKERS].addJob(epollEvent);
+/**
+ * add epollEvent into shared EpollEventRingBuffer
+ * @param epollEvent
+ */
+inline void Polling(struct epoll_event &epollEvent) {
+	EpollEventRingBuffer.Push(epollEvent);
 #ifdef DEBUG_OUTPUT
 	printf("jobCount: %d \n", JobCount);
 #endif
@@ -266,10 +268,9 @@ void ProgramTerminated() {
 
 
 int main(int argc, char *argv[]) {
-	printf("start epoll_server.cpp\n");
+	printf("start multi_thread_epoll_server.cpp\n");
 	
 	signal(SIGINT, sig_handler);
-	ClientInfoMap.reserve(NUM_FD);
 	
 	int i, new_client_fd, nfds/*number of fd s*/, portnumber;
 	socklen_t length;
@@ -333,7 +334,8 @@ int main(int argc, char *argv[]) {
 	// do initialization
 	InitializeWorkers(workers);
 	InitializeFDProcessStatusArr();
-	
+	InitializeClientInfoArr();
+
 #ifdef DEBUG_OUTPUT
 	int nfds_old = 0;
 #endif
@@ -393,7 +395,7 @@ int main(int argc, char *argv[]) {
 #endif
 				
 				// create the space 
-				ClientInfoMap[new_client_fd] = Package(-1);
+				ClientInfoArr[new_client_fd] = Package(-1);
 				
 				// epoll_ctl - control interface for an epoll file descriptor
 				// int epoll_ctl(int epoll_fd, int op, int fd, struct epoll_event *event);
