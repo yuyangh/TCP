@@ -27,15 +27,14 @@
 #include <errno.h>
 #include <csignal>
 #include "data.h"
-#include "readerwriterqueue.h"
 #include "ring_buffer.hpp"
 
 static const size_t MAX_QUEUE_SIZE=100;
 
-class Worker {
+class Multi_Thread_Worker {
 public:
 	
-	Worker():ring_buffer(MAX_QUEUE_SIZE) {}
+	Multi_Thread_Worker():ring_buffer(MAX_QUEUE_SIZE) {}
 	
 	inline void addJob(struct epoll_event &event){
 		ring_buffer.Push((event));

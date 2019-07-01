@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
-project(TCPExample)
+project(TCP_Testing)
 
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_FLAGS "-O2")
 
 set(CMAKE_BUILD_TYPE debug)
 
@@ -10,7 +11,7 @@ set(PARALLEL_SEND_AND_RECEIVE on)
 set(SEND_RECEIVE_SEPARATE on)
 set(EDGE_TRIGGERED off)
 
-file(GLOB SOURCES data.h)
+file(GLOB DATA data.h)
 file(GLOB READ_WRITE_QUEUE atomicops.h readerwriterqueue.h)
 file(GLOB RING_BUFFER common.h ring_buffer.hpp )
 
@@ -30,19 +31,19 @@ IF (EDGE_TRIGGERED)
     ADD_DEFINITIONS(-DEDGE_TRIGGERED)
 ENDIF ()
 
-add_executable(server server.cpp ${SOURCES} worker.h)
+add_executable(server server.cpp ${DATA} worker.h)
 TARGET_LINK_LIBRARIES(server pthread)
 
-add_executable(epoll_server epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
+add_executable(epoll_server epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(epoll_server pthread)
 
-add_executable(multi_thread_epoll_server multi_thread_epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
+add_executable(multi_thread_epoll_server multi_thread_epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(multi_thread_epoll_server pthread)
 
-add_executable(client client.cpp client.h ${SOURCES})
+add_executable(client client.cpp client.h ${DATA})
 
-add_executable(client_pool client_pool.cpp client.h ${SOURCES})
+add_executable(client_pool client_pool.cpp client.h ${DATA})
 TARGET_LINK_LIBRARIES(client_pool pthread)
 
-add_executable(epoll_server_example epoll_server_example.cpp ${SOURCES} mullti_thread_worker.h)
+add_executable(epoll_server_example epoll_server_example.cpp ${DATA} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(epoll_server_example pthread)

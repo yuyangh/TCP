@@ -1,9 +1,7 @@
-//
-// Created by yuyanghu on 6/11/2019.
-//
 
 #ifndef TCPEXAMPLE_WORKER_H
 #define TCPEXAMPLE_WORKER_H
+
 
 #include <netinet/in.h>
 #include <sys/types.h>
@@ -30,43 +28,15 @@
 #include <errno.h>
 #include <csignal>
 #include "data.h"
-#include "readerwriterqueue.h"
 
-#define MAX_QUEUE_SIZE 100
-
-class Worker {
+class Multi_Thread_Worker {
 public:
 	std::queue<int> clientConnections;
-	moodycamel::ReaderWriterQueue<struct epoll_event> buffer;
 	
-	Worker():buffer(MAX_QUEUE_SIZE) {}
+	Multi_Thread_Worker() {}
 	
-	inline void addJob(struct epoll_event &event){
-#ifdef DEBUG_OUTPUT
-		printf("buffer size before addJob:\t %d\n",(int)buffer.size_approx());
-#endif
-		buffer.enqueue(std::move(event));
-#ifdef DEBUG_OUTPUT
-		printf("buffer size after addJob:\t %d\n",(int)buffer.size_approx());
-#endif
-	}
-	
-	struct epoll_event* getJob(){
-		return buffer.peek();
-	}
-	
-	void popJob(){
-#ifdef DEBUG_OUTPUT
-		printf("buffer size before popJob:\t %d\n",(int)buffer.size_approx());
-#endif
-		buffer.pop();
-#ifdef DEBUG_OUTPUT
-		printf("buffer size after popJob:\t %d\n",(int)buffer.size_approx());
-#endif
-	}
-
-	size_t size_approx(){
-		return buffer.size_approx();
+	size_t size(){
+		return clientConnections.size();
 	}
 	
 	// deprecated
@@ -87,7 +57,7 @@ public:
 			return socket;
 		}
 	}
-
+	
 	bool empty() {
 		return clientConnections.empty();
 	}
