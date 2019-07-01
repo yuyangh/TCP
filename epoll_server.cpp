@@ -23,7 +23,7 @@
 #include <unordered_map>
 
 #include "data.h"
-#include "worker.h"
+#include "mullti_thread_worker.h"
 
 using namespace std;
 #define NUM_WORKERS 			20
@@ -45,16 +45,15 @@ static unordered_map<int, Package> ClientInfoMap;
 static unordered_map<int, ProcessStatus> FDProcessStatus;
 // todo may optimize unordered_map to array to accelerate
 // static ProcessStatus FDProcessStatusArr[NUM_FD];
-static struct epoll_event EpollEvents[NUM_FD];
 
 
 void process(struct epoll_event *epollEvent);
 
 void ProgramTerminated();
 
-void receivePackage(struct epoll_event *epollEvent);
+void ReceivePackage(struct epoll_event *epollEvent);
 
-void sendResult(struct epoll_event *epollEvent);
+void SendResult(struct epoll_event *epollEvent);
 
 void sig_handler(int sig) {
 	if (sig == SIGINT) {
@@ -63,26 +62,26 @@ void sig_handler(int sig) {
 }
 
 // back end thread
-void processJob(int i) {
+void ProcessJob(int i) {
 	while (true) {
-		struct epoll_event *epollEvent = works[i].getJob();
-		if (epollEvent == nullptr) {
-			continue;
-		}
+		struct epoll_event epollEvent = works[i].PopJob();
+		// if (epollEvent == nullptr) {
+		// 	continue;
+		// }
 
 #ifdef DEBUG_OUTPUT
 		printf("size of the queues[%d]: %d \n", i, (int) works[i].size_approx());
 #endif
 		
-		if ((epollEvent->events) & EPOLLIN) {
+		if ((epollEvent.events) & EPOLLIN) {
 			// receive from the client
-			receivePackage(epollEvent);
-			works[i].popJob();
+			ReceivePackage(&epollEvent);
+			// works[i].popJob();
 		} else {
-			if ((epollEvent->events) & EPOLLOUT) {
+			if ((epollEvent.events) & EPOLLOUT) {
 				// send to the client
-				sendResult(epollEvent);
-				works[i].popJob();
+				SendResult(&epollEvent);
+				// works[i].popJob();
 			} else {
 				assert(false);
 			}
@@ -104,8 +103,22 @@ Package receivePackage(int client_fd) {
 	return buffer;
 }
 
+// deprecated SendResult
+void sendResult(int client_fd, Package &buffer) {
+	// send the response
+	int sendbytes;
+	Result result(buffer.id);
+	if ((sendbytes = send(client_fd, (char *) &result, sizeof(Result), 0)) == -1) {
+		perror("respond");
+		exit(1);
+	}
+#ifdef DEBUG_OUTPUT
+	printf("send the Result, id:%d\n", result.id);
+#endif
+}
+
 // current version
-void receivePackage(struct epoll_event *epollEvent) {
+void ReceivePackage(struct epoll_event *epollEvent) {
 	
 	int epollEventFD = epollEvent->data.fd;
 	// in receiving, so not in ready stage
@@ -140,7 +153,6 @@ void receivePackage(struct epoll_event *epollEvent) {
 	}
 	
 	
-	// todo fixed epoll_ctl
 #ifdef EDGE_TRIGGERED
 	epollEvent->events=EPOLLOUT | EPOLLET;
 #else
@@ -161,7 +173,7 @@ void receivePackage(struct epoll_event *epollEvent) {
 }
 
 // current version
-void sendResult(struct epoll_event *epollEvent) {
+void SendResult(struct epoll_event *epollEvent) {
 	
 	int epollEventFD = epollEvent->data.fd;
 	// in sending stage, so this fd is no longer in ready stage
@@ -182,10 +194,8 @@ void sendResult(struct epoll_event *epollEvent) {
 
 #ifdef EDGE_TRIGGERED
 	epollEvent->events=EPOLLIN | EPOLLET;
-	// event.events = EPOLLIN | EPOLLET;
 #else
 	epollEvent->events = EPOLLIN;
-	// event.events = EPOLLIN;
 #endif
 
 #ifdef DEBUG_OUTPUT
@@ -196,22 +206,6 @@ void sendResult(struct epoll_event *epollEvent) {
 	
 	// already send, so able to receive
 	FDProcessStatus[epollEventFD].ready_to_receive_ = true;
-}
-
-// deprecated sendResult
-void sendResult(int client_fd, Package &buffer) {
-	// send the response
-	int sendbytes;
-	Result result(buffer.id);
-	if ((sendbytes = send(client_fd, (char *) &result, sizeof(Result), 0)) == -1) {
-		perror("respond");
-		exit(1);
-	}
-
-
-#ifdef DEBUG_OUTPUT
-	printf("send the Result, id:%d\n", result.id);
-#endif
 }
 
 // receive and send together
@@ -249,9 +243,9 @@ void process(struct epoll_event *epollEvent) {
 }
 
 
-void init(std::vector<std::thread> &workers) {
+void InitializeWorkers(std::vector<std::thread> &workers) {
 	for (int i = 0; i < NUM_WORKERS; ++i) {
-		workers.push_back(std::thread(processJob, i));
+		workers.push_back(std::thread(ProcessJob, i));
 		if (workers[i].joinable()) {
 			workers[i].detach();
 		}
@@ -259,7 +253,7 @@ void init(std::vector<std::thread> &workers) {
 }
 
 // todo may optimzie as pass by reference
-inline void polling(struct epoll_event epollEvent) {
+inline void Polling(struct epoll_event epollEvent) {
 	works[JobCount % NUM_WORKERS].addJob(epollEvent);
 #ifdef DEBUG_OUTPUT
 	printf("jobCount: %d \n", JobCount);
@@ -267,7 +261,7 @@ inline void polling(struct epoll_event epollEvent) {
 	++JobCount;
 }
 
-void setnonblocking(int sock) {
+void SetNonBlocking(int sock) {
 	int opts;
 	opts = fcntl(sock, F_GETFL);
 	if (opts < 0) {
@@ -319,7 +313,7 @@ int main(int argc, char *argv[]) {
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	//把socket设置为非阻塞方式
-	setnonblocking(server_fd);
+	SetNonBlocking(server_fd);
 	
 	//设置与要处理的事件相关的文件描述符
 	event.data.fd = server_fd;
@@ -356,9 +350,9 @@ int main(int argc, char *argv[]) {
 	
 	vector<Package> packages(MAX_EPOLL_EVENT_COUNT);
 	
-	// init thread to work
+	// initializeWorkers thread to work
 	std::vector<std::thread> workers(NUM_WORKERS);
-	init(workers);
+	InitializeWorkers(workers);
 	
 	int nfds_old = 0;
 	
@@ -398,7 +392,7 @@ int main(int argc, char *argv[]) {
 					perror("new_client_fd < 0");
 					exit(1);
 				}
-				setnonblocking(new_client_fd);
+				SetNonBlocking(new_client_fd);
 
 #ifdef DEBUG_OUTPUT
 				// output client fd
@@ -437,7 +431,7 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 						printf("fd: %d \t ready_to_receive_ polling\n", event_array[i].data.fd);
 #endif
-						polling(event_array[i]);
+						Polling(event_array[i]);
 					}
 #ifdef DEBUG_OUTPUT
 					printf("fd: %d \t waiting for ready_to_receive_ condition \n", event_array[i].data.fd);
@@ -451,7 +445,7 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 							printf("fd: %d \t ready_to_send_ polling\n", event_array[i].data.fd);
 #endif
-							polling(event_array[i]);
+							Polling(event_array[i]);
 						}
 #ifdef DEBUG_OUTPUT
 						printf("fd: %d \t waiting for ready_to_send_ condition \n", event_array[i].data.fd);
@@ -461,7 +455,7 @@ int main(int argc, char *argv[]) {
 					perror("ERROR, events wrong type\n");
 				}
 				continue;
-				printf("should not running here\n");
+				printf("should not RUNNING_FLAG here\n");
 #endif
 
 #ifndef PARALLEL_SEND_AND_RECEIVE
