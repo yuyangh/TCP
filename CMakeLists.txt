@@ -12,7 +12,7 @@ set(EDGE_TRIGGERED off)
 
 file(GLOB SOURCES data.h)
 file(GLOB READ_WRITE_QUEUE atomicops.h readerwriterqueue.h)
-file(GLOB RING_BUFFER ring_buffer.h ring_buffer.hpp common.h)
+file(GLOB RING_BUFFER common.h ring_buffer.hpp )
 
 IF (DEBUG_OUTPUT)
     ADD_DEFINITIONS(-DDEBUG_OUTPUT)
@@ -33,10 +33,10 @@ ENDIF ()
 add_executable(server server.cpp ${SOURCES} worker.h)
 TARGET_LINK_LIBRARIES(server pthread)
 
-add_executable(epoll_server epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} worker.h)
+add_executable(epoll_server epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(epoll_server pthread)
 
-add_executable(multi_thread_epoll_server multi_thread_epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} worker.h)
+add_executable(multi_thread_epoll_server multi_thread_epoll_server.cpp ${SOURCES} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(multi_thread_epoll_server pthread)
 
 add_executable(client client.cpp client.h ${SOURCES})
@@ -44,5 +44,5 @@ add_executable(client client.cpp client.h ${SOURCES})
 add_executable(client_pool client_pool.cpp client.h ${SOURCES})
 TARGET_LINK_LIBRARIES(client_pool pthread)
 
-add_executable(epoll_server_example epoll_server_example.cpp ${SOURCES} worker.h)
+add_executable(epoll_server_example epoll_server_example.cpp ${SOURCES} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(epoll_server_example pthread)

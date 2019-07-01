@@ -23,30 +23,31 @@
 #include <unordered_map>
 
 #include "data.h"
-#include "worker.h"
+#include "mullti_thread_worker.h"
 
 using namespace std;
-#define NUM_WORKERS             20
-#define ECHO_SERVER_PORT        6000
-#define NUM_FD                  1200
-#define LISTEN_BACKLOG          16
-#define MAX_EPOLL_EVENT_COUNT   (NUM_FD>>2)
-#define EPOLL_WAIT_TIMEOUT      -1
 
+static const int NUM_WORKERS = 20;
+static const int ECHO_SERVER_PORT = 6000;
+static const int NUM_FD = 1200;
+static const int LISTEN_BACKLOG = 16;
+static const int MAX_EPOLL_EVENT_COUNT = (NUM_FD >> 2);
+static const int EPOLL_WAIT_TIMEOUT = -1;
 
 static std::vector<Worker> works(NUM_WORKERS);
 static int epoll_fd, server_fd;
-static volatile bool running = true;
+static volatile bool RUNNING_FLAG = true;
 // event for the server
 static struct epoll_event event;
 
 static unsigned long long JobCount = 0;
 static unordered_map<int, Package> ClientInfoMap;
-static unordered_map<int, ProcessStatus> FDProcessStatus;
-// todo may optimize unordered_map to array to accelerate
+// static unordered_map<int, ProcessStatus> FDProcessStatus;
 static ProcessStatus FDProcessStatusArr[NUM_FD];
 
-
+/*
+ * function prototypes
+ */
 void process(struct epoll_event *epollEvent);
 
 void ProgramTerminated();
@@ -55,39 +56,42 @@ void ReceivePackage(struct epoll_event *epollEvent);
 
 void SendResult(struct epoll_event *epollEvent);
 
+/*
+ * functions
+ */
 void sig_handler(int sig) {
 	if (sig == SIGINT) {
 		ProgramTerminated();
 	}
 }
 
-void InitializeFDProcessStatusArr(){
-	for (int i = 0; i <NUM_FD ; ++i) {
-		FDProcessStatusArr[i]=ProcessStatus();
+void InitializeFDProcessStatusArr() {
+	for (auto &item : FDProcessStatusArr) {
+		item = ProcessStatus();
 	}
 }
 
 // back end thread
 void ProcessJob(int i) {
 	while (true) {
-		struct epoll_event *epollEvent = works[i].getJob();
-		if (epollEvent == nullptr) {
-			continue;
-		}
+		struct epoll_event epollEvent = works[i].PopJob();
+		// if (epollEvent == nullptr) {
+		// 	continue;
+		// }
 
 #ifdef DEBUG_OUTPUT
 		printf("size of the queues[%d]: %d \n", i, (int) works[i].size_approx());
 #endif
 		
-		if ((epollEvent->events) & EPOLLIN) {
+		if ((epollEvent.events) & EPOLLIN) {
 			// receive from the client
-			ReceivePackage(epollEvent);
-			works[i].popJob();
+			ReceivePackage(&epollEvent);
+			// works[i].popJob();
 		} else {
-			if ((epollEvent->events) & EPOLLOUT) {
+			if ((epollEvent.events) & EPOLLOUT) {
 				// send to the client
-				SendResult(epollEvent);
-				works[i].popJob();
+				SendResult(&epollEvent);
+				// works[i].popJob();
 			} else {
 				assert(false);
 			}
@@ -100,7 +104,7 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 	
 	int epollEventFD = epollEvent->data.fd;
 	// in receiving, so not in ready stage
-	assert(!FDProcessStatus[epollEventFD].ready_to_receive_);
+	assert(!FDProcessStatusArr[epollEventFD].ready_to_receive_);
 	
 	// receive the Package from the client
 	Package buffer;
@@ -119,8 +123,8 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 		close(epollEventFD);
 		
 		// update ready_to_send_ and ready_to_receive_ status
-		FDProcessStatus[epollEventFD].ready_to_send_ = true;
-		FDProcessStatus[epollEventFD].ready_to_receive_ = true;
+		FDProcessStatusArr[epollEventFD].ready_to_send_ = true;
+		FDProcessStatusArr[epollEventFD].ready_to_receive_ = true;
 		return;
 	} else {
 		memcpy(&buffer, recvPackage, sizeof(Package));
@@ -147,7 +151,7 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 	epoll_ctl(epoll_fd, EPOLL_CTL_MOD, epollEventFD, epollEvent);
 	
 	// receive done, able to send
-	FDProcessStatus[epollEventFD].ready_to_send_ = true;
+	FDProcessStatusArr[epollEventFD].ready_to_send_ = true;
 }
 
 // current version
@@ -155,7 +159,7 @@ void SendResult(struct epoll_event *epollEvent) {
 	
 	int epollEventFD = epollEvent->data.fd;
 	// in sending stage, so this fd is no longer in ready stage
-	assert(!FDProcessStatus[epollEventFD].ready_to_send_);
+	assert(!FDProcessStatusArr[epollEventFD].ready_to_send_);
 	
 	// send the response
 #ifdef DEBUG_OUTPUT
@@ -183,7 +187,7 @@ void SendResult(struct epoll_event *epollEvent) {
 	epoll_ctl(epoll_fd, EPOLL_CTL_MOD, epollEventFD, epollEvent);
 	
 	// already send, so able to receive
-	FDProcessStatus[epollEventFD].ready_to_receive_ = true;
+	FDProcessStatusArr[epollEventFD].ready_to_receive_ = true;
 }
 
 // receive and send together
@@ -254,7 +258,7 @@ void SetNonBlocking(int sock) {
 }
 
 void ProgramTerminated() {
-	running = false;
+	RUNNING_FLAG = false;
 	cout << "\n\nterminating the program..." << endl;
 	close(epoll_fd);
 	close(server_fd);
@@ -263,12 +267,11 @@ void ProgramTerminated() {
 
 int main(int argc, char *argv[]) {
 	printf("start epoll_server.cpp\n");
+	
 	signal(SIGINT, sig_handler);
 	ClientInfoMap.reserve(NUM_FD);
-	FDProcessStatus.reserve(NUM_FD);
 	
-	int i, maxi, server_fd, new_client_fd, sockfd, nfds/*number of fd s*/, portnumber;
-	ssize_t n;
+	int i, new_client_fd, nfds/*number of fd s*/, portnumber;
 	socklen_t length;
 	
 	if (argc == 2) {
@@ -287,8 +290,8 @@ int main(int argc, char *argv[]) {
 	// creat the epoll_fd to deal with accept
 	epoll_fd = epoll_create(NUM_FD);
 	
-	struct sockaddr_in client_addr;// todo
-	struct sockaddr_in serveraddr;
+	struct sockaddr_in client_addr;
+	struct sockaddr_in server_addr;
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	// set socket to non-blocking
@@ -296,7 +299,6 @@ int main(int argc, char *argv[]) {
 	
 	//设置与要处理的事件相关的文件描述符
 	event.data.fd = server_fd;
-	//设置要处理的事件类型
 	
 	// EPOLLET is edge triggerd, default setting is level triggered
 #ifdef EDGE_TRIGGERED
@@ -316,25 +318,27 @@ int main(int argc, char *argv[]) {
 	// descriptor epfd.  It requests that the operation op be performed for
 	// the target file descriptor, fd.
 	epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event);
-	bzero(&serveraddr, sizeof(serveraddr));
-	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_addr.s_addr = htons(INADDR_ANY);
-	// string local_addr = "127.0.0.1";
-	// inet_aton(local_addr.c_str(), &(serveraddr.sin_addr));
+	bzero(&server_addr, sizeof(server_addr));
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_addr.s_addr = htons(INADDR_ANY);
+	server_addr.sin_port = htons(portnumber);
 	
-	serveraddr.sin_port = htons(portnumber);
-	bind(server_fd, (sockaddr * ) & serveraddr, sizeof(serveraddr));
+	bind(server_fd, (sockaddr * ) & server_addr, sizeof(server_addr));
 	listen(server_fd, MAX_EPOLL_EVENT_COUNT);
 	
-	vector<Package> packages(MAX_EPOLL_EVENT_COUNT);
 	
-	// initializeWorkers thread to work
+	// initialize Workers thread to work
 	std::vector<std::thread> workers(NUM_WORKERS);
+	
+	// do initialization
 	InitializeWorkers(workers);
+	InitializeFDProcessStatusArr();
 	
+#ifdef DEBUG_OUTPUT
 	int nfds_old = 0;
+#endif
 	
-	while (running) {
+	while (RUNNING_FLAG) {
 		// waiting for epoll to happen
 		// interface: int epoll_wait(int epoll_fd, struct epoll_event *event_array, int maxevents, int timeout);
 		
@@ -378,18 +382,16 @@ int main(int argc, char *argv[]) {
 				cout << "\tfd: " << new_client_fd << endl;
 #endif
 				
-				//设置用于读操作的文件描述符
+				// set event fd
 				event.data.fd = new_client_fd;
 				
-				//设置用于注测的读操作事件
+				// set event to be incoming event
 #ifdef EDGE_TRIGGERED
 				event.events = EPOLLIN | EPOLLET;
 #else
 				event.events = EPOLLIN;
 #endif
 				
-				// register this client fd as neither receiving nor sending
-				FDProcessStatus[(new_client_fd)] = ProcessStatus();
 				// create the space 
 				ClientInfoMap[new_client_fd] = Package(-1);
 				
@@ -401,9 +403,9 @@ int main(int argc, char *argv[]) {
 			} else {
 				
 				if ((event_array[i].events & EPOLLIN)) {
-					if (FDProcessStatus[event_array[i].data.fd].ready_to_receive_) {
+					if (FDProcessStatusArr[event_array[i].data.fd].ready_to_receive_) {
 						// go to receiving stage, so no longer in ready stage
-						FDProcessStatus[event_array[i].data.fd].ready_to_receive_ = false;
+						FDProcessStatusArr[event_array[i].data.fd].ready_to_receive_ = false;
 #ifdef DEBUG_OUTPUT
 						printf("fd: %d \t ready_to_receive_ polling\n", event_array[i].data.fd);
 #endif
@@ -415,9 +417,9 @@ int main(int argc, char *argv[]) {
 					continue;
 				} else {
 					if ((event_array[i].events & EPOLLOUT)) {
-						if (FDProcessStatus[event_array[i].data.fd].ready_to_send_) {
+						if (FDProcessStatusArr[event_array[i].data.fd].ready_to_send_) {
 							// go to sending stage, so no longer in ready stage
-							FDProcessStatus[event_array[i].data.fd].ready_to_send_ = false;
+							FDProcessStatusArr[event_array[i].data.fd].ready_to_send_ = false;
 #ifdef DEBUG_OUTPUT
 							printf("fd: %d \t ready_to_send_ polling\n", event_array[i].data.fd);
 #endif
