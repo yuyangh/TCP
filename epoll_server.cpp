@@ -34,7 +34,7 @@ using namespace std;
 #define EPOLL_WAIT_TIMEOUT      -1
 
 
-static std::vector<Worker> works(NUM_WORKERS);
+static std::vector<Multi_Thread_Worker> works(NUM_WORKERS);
 static int epoll_fd, server_fd;
 static volatile bool running = true;
 // event for the server
