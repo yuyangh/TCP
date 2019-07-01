@@ -17,22 +17,22 @@
 
 #define LENGTH_OF_SERVER_LISTEN_QUEUE     10000
 #define NUM_WORKERS 20
-std::vector <Worker> works(NUM_WORKERS);
+static std::vector<Worker> works(NUM_WORKERS);
 
-void process(int);
+void Process(int);
 
-void work(int i) {
+void Work(int i) {
 	while (true) {
 		int socket = works[i].getConnection();
 		if (socket == -1) {
 			continue;
 		} else {
-			process(socket);
+			Process(socket);
 		}
 	}
 }
 
-void process(int client_socket) {
+void Process(int client_socket) {
 	// receive the Package from the client
 	char recvPackage[PACKAGE_BUFFER_SIZE];
 	Package buffer;
@@ -56,16 +56,16 @@ void process(int client_socket) {
 	close(client_socket);
 }
 
-void init(std::vector <std::thread> &workers) {
+void InitializeWorkers(std::vector<std::thread> &workers) {
 	for (int i = 0; i < NUM_WORKERS; ++i) {
-		workers.push_back(std::thread(work, i));
+		workers.push_back(std::thread(Work, i));
 		if (workers[i].joinable()) {
 			workers[i].detach();
 		}
 	}
 }
 
-void polling(std::vector <std::thread> &workers, int64_t count, int connection) {
+void polling(std::vector<std::thread> &workers, int64_t count, int connection) {
 	works[count % NUM_WORKERS].addConnections(connection);
 }
 
@@ -100,25 +100,29 @@ int main(int argc, char **argv) {
 		printf("Server Listen Failed!\n");
 		exit(1);
 	}
-	// init
-	std::vector <std::thread> workers(NUM_WORKERS);
-	init(workers);
+	// initializeWorkers
+	std::vector<std::thread> workers(NUM_WORKERS);
+	InitializeWorkers(workers);
 	int64_t count = 0;
 	
 	while (true) {
 		struct sockaddr_in client_addr;
 		socklen_t length = sizeof(client_addr);
 		
-		
 		int new_client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &length);
 		if (new_client_fd < 0) {
 			printf("Server Accept Failed!\n");
 			break;
 		}
+		
+		// multithreading version
+		// distribute each FD's activity to one of the thread
 		polling(workers, count, new_client_fd);
 		count++;
 		
 		
+		// if uncomment the following part,
+		// the server will do single thread send and receive
 		
 		/*
 		
@@ -129,7 +133,6 @@ int main(int argc, char **argv) {
 		ssize_t rs = recv(new_client_fd, recvPackage, PACKAGE_BUFFER_SIZE, 0);
 		memcpy(&buffer, recvPackage, sizeof(Package));
 		printf("recv over id:%u, key:%d, value:%d\n", (unsigned int) buffer.id, buffer.key.id, buffer.value.id);
-		
 		
 		// send the response
 		int sendbytes;
