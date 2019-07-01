@@ -1,0 +1,13 @@
+start the client_pool.cpp
+send Package: id:0, key:0, value:0 
+send Package: id:0, key:1, value:1 
+receive Result, id:0
+send Package: id:0, key:0, value:2 
+receive Result, id:1
+send Package: id:0, key:1, value:3 
+receive Result, id:2
+send Package: id:0, key:0, value:4 
+receive Result, id:4
+one thread complete
+receive Result, id:1
+client_pool: /home/yuyangh/test/client.h:120: void Client::test(int, int): Assertion `result.id==value.id' failed.
