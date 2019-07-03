@@ -14,13 +14,13 @@
 using namespace std;
 
 #define NUM_THREADS 1000
-#define NUM_TASK_PER_THREAD 5000
+#define NUM_TASK_PER_THREAD 10000
 #define NUM_ENTRIES (NUM_THREADS*NUM_TASK_PER_THREAD)
 
 static std::atomic<int64_t> ENTRY_COUNT(0);
 static std::atomic<bool> END_STAT(false);
 static std::atomic<unsigned long long> DURATION(0);
-static std::atomic<int> UNIQUE_COUNTER(-1);
+static std::atomic<unsigned long > UNIQUE_COUNTER(-1);
 // Record start time
 static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -56,11 +56,13 @@ int main(int argc, char **argv) {
 	}
 	std::vector<std::thread> threadPool;
 	
+	startTime = std::chrono::high_resolution_clock::now();
+	
 	for (int i = 0; i < NUM_THREADS; ++i) {
 		// func(clients[i],i,i);
 		threadPool.push_back(std::thread(thread_task, (clients[i]), i, i));
-		if (threadPool[i].joinable()) {
-			threadPool[i].detach();
+		if (threadPool.back().joinable()) {
+			threadPool.back().detach();
 		}
 	}
 	

@@ -38,6 +38,10 @@ add_executable(libevent_server libevent_server.cpp ${DATA} worker.h)
 TARGET_LINK_LIBRARIES(libevent_server pthread)
 TARGET_LINK_LIBRARIES(libevent_server event_core)
 
+add_executable(libevent_server_ref libevent_server_ref.cpp ${DATA} worker.h)
+TARGET_LINK_LIBRARIES(libevent_server_ref pthread)
+TARGET_LINK_LIBRARIES(libevent_server_ref event_core)
+
 add_executable(multi_queue_epoll_server multi_queue_epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
 TARGET_LINK_LIBRARIES(multi_queue_epoll_server pthread)
 

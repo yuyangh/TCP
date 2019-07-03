@@ -26,12 +26,12 @@
 #include "mullti_thread_worker.h"
 
 using namespace std;
-#define NUM_WORKERS 			20
+#define NUM_WORKERS 			32
 #define ECHO_SERVER_PORT        6000
 #define NUM_FD                  1200
 #define LISTEN_BACKLOG          16
 #define MAX_EPOLL_EVENT_COUNT   (NUM_FD>>2)
-#define EPOLL_WAIT_TIMEOUT      -1
+#define EPOLL_WAIT_TIMEOUT      0
 
 
 static std::vector<Multi_Thread_Worker> works(NUM_WORKERS);
@@ -65,13 +65,6 @@ void sig_handler(int sig) {
 void ProcessJob(int i) {
 	while (true) {
 		struct epoll_event epollEvent = works[i].PopJob();
-		// if (epollEvent == nullptr) {
-		// 	continue;
-		// }
-
-#ifdef DEBUG_OUTPUT
-		printf("size of the queues[%d]: %d \n", i, (int) works[i].size_approx());
-#endif
 		
 		if ((epollEvent.events) & EPOLLIN) {
 			// receive from the client
@@ -284,7 +277,7 @@ void ProgramTerminated() {
 
 
 int main(int argc, char *argv[]) {
-	printf("start epoll_server.cpp\n");
+	printf("start multi_queue_epoll_server.cpp\n");
 	signal(SIGINT, sig_handler);
 	ClientInfoMap.reserve(NUM_FD);
 	FDProcessStatus.reserve(NUM_FD);

@@ -6,7 +6,7 @@
 #include <atomic>
 
 #define PACKAGE_BUFFER_SIZE 128
-#define RESULT_BUFFER_SIZE 128
+#define RESULT_BUFFER_SIZE 80
 #define SERVER_PORT    6666
 
 class Slice {
