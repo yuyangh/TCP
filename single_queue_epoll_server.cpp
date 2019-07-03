@@ -27,13 +27,13 @@
 
 using namespace std;
 
-static const int NUM_WORKERS = 16;
+static const int NUM_WORKERS = 20;
 static const int ECHO_SERVER_PORT = 6000;
 static const int NUM_FD = 1200;
 static const int LISTEN_BACKLOG = 16;
 static const int MAX_EPOLL_EVENT_COUNT = (NUM_FD >> 2);
-static const int EPOLL_WAIT_TIMEOUT = -1;
-static const size_t MAX_QUEUE_SIZE = 100;
+static const int EPOLL_WAIT_TIMEOUT = 0;
+static const size_t MAX_QUEUE_SIZE = NUM_FD;
 
 static int epoll_fd, server_fd;
 static volatile bool RUNNING_FLAG = true;
@@ -166,7 +166,8 @@ void SendResult(struct epoll_event *epollEvent) {
 		   ClientInfoArr[epollEventFD].value.id);
 #endif
 	
-	Result result(ClientInfoArr[epollEventFD].value.id);
+	// Result result(ClientInfoArr[epollEventFD].value.id);
+	Result result(0);
 	int sendbytes = send(epollEventFD, (char *) &result, sizeof(Result), 0);
 	if (sendbytes < 0) {
 		perror("send failed.\n");
@@ -268,14 +269,14 @@ void ProgramTerminated() {
 
 
 int main(int argc, char *argv[]) {
-	printf("start multi_thread_epoll_server.cpp\n");
+	printf("start single_queue_epoll_server.cpp\n");
 	
 	signal(SIGINT, sig_handler);
 	
 	int i, new_client_fd, nfds/*number of fd s*/, portnumber;
 	socklen_t length;
 	
-	if (argc == 2) {
+	if (argc >1) {
 		if ((portnumber = atoi(argv[1])) < 0) {
 			fprintf(stderr, "Usage:%s portnumber/a/n", argv[0]);
 			return 1;
@@ -359,6 +360,7 @@ int main(int argc, char *argv[]) {
 			nfds_old = nfds;
 		}
 #endif
+		
 		for (i = 0; i < nfds; ++i) {
 			
 			Package buffer;
@@ -411,7 +413,12 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 						printf("fd: %d \t ready_to_receive_ polling\n", event_array[i].data.fd);
 #endif
-						Polling(event_array[i]);
+						
+						EpollEventRingBuffer.Push(event_array[i]);
+#ifdef DEBUG_OUTPUT
+						printf("jobCount: %d \n", JobCount);
+#endif
+						++JobCount;
 					}
 #ifdef DEBUG_OUTPUT
 					printf("fd: %d \t waiting for ready_to_receive_ condition \n", event_array[i].data.fd);
@@ -425,7 +432,11 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 							printf("fd: %d \t ready_to_send_ polling\n", event_array[i].data.fd);
 #endif
-							Polling(event_array[i]);
+							EpollEventRingBuffer.Push(event_array[i]);
+#ifdef DEBUG_OUTPUT
+							printf("jobCount: %d \n", JobCount);
+#endif
+							++JobCount;
 						}
 #ifdef DEBUG_OUTPUT
 						printf("fd: %d \t waiting for ready_to_send_ condition \n", event_array[i].data.fd);

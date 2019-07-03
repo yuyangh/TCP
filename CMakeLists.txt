@@ -31,16 +31,20 @@ IF (EDGE_TRIGGERED)
     ADD_DEFINITIONS(-DEDGE_TRIGGERED)
 ENDIF ()
 
-add_executable(server server.cpp ${DATA} worker.h)
-TARGET_LINK_LIBRARIES(server pthread)
+add_executable(basic_server basic_server.cpp ${DATA} worker.h)
+TARGET_LINK_LIBRARIES(basic_server pthread)
 
-add_executable(epoll_server epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
-TARGET_LINK_LIBRARIES(epoll_server pthread)
+add_executable(libevent_server libevent_server.cpp ${DATA} worker.h)
+TARGET_LINK_LIBRARIES(libevent_server pthread)
+TARGET_LINK_LIBRARIES(libevent_server event_core)
 
-add_executable(multi_thread_epoll_server multi_thread_epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
-TARGET_LINK_LIBRARIES(multi_thread_epoll_server pthread)
+add_executable(multi_queue_epoll_server multi_queue_epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
+TARGET_LINK_LIBRARIES(multi_queue_epoll_server pthread)
 
-add_executable(client client.cpp client.h ${DATA})
+add_executable(single_queue_epoll_server single_queue_epoll_server.cpp ${DATA} ${READ_WRITE_QUEUE} mullti_thread_worker.h)
+TARGET_LINK_LIBRARIES(single_queue_epoll_server pthread)
+
+add_executable(single_client single_client.cpp client.h ${DATA})
 
 add_executable(client_pool client_pool.cpp client.h ${DATA})
 TARGET_LINK_LIBRARIES(client_pool pthread)
