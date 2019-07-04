@@ -34,9 +34,13 @@ ENDIF ()
 add_executable(basic_server basic_server.cpp ${DATA} worker.h)
 TARGET_LINK_LIBRARIES(basic_server pthread)
 
-add_executable(libevent_server libevent_server.cpp ${DATA} worker.h)
-TARGET_LINK_LIBRARIES(libevent_server pthread)
-TARGET_LINK_LIBRARIES(libevent_server event_core)
+add_executable(single_thread_libevent_server single_thread_libevent_server.cpp ${DATA} worker.h)
+TARGET_LINK_LIBRARIES(single_thread_libevent_server pthread)
+TARGET_LINK_LIBRARIES(single_thread_libevent_server event_core)
+
+add_executable(multi_thread_libevent_server multi_thread_libevent_server.cpp ${DATA} worker.h)
+TARGET_LINK_LIBRARIES(multi_thread_libevent_server pthread)
+TARGET_LINK_LIBRARIES(multi_thread_libevent_server event_core)
 
 add_executable(libevent_server_ref libevent_server_ref.cpp ${DATA} worker.h)
 TARGET_LINK_LIBRARIES(libevent_server_ref pthread)
