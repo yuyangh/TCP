@@ -17,7 +17,15 @@ g++ -Wall -g  event-server.c -o server -levent -lpthread
 #include "event.h"
 #include <stdlib.h>
 #include <pthread.h>
+#include <event2/event.h>
+#include <event2/bufferevent.h>
+#include <event2/thread.h>
+#include <event2/util.h>
+#include <event2/buffer.h>
+#include <event2/listener.h>
 #include <fcntl.h>
+#include "data.h"
+#include "ring_buffer.hpp"
 
 #define ERR_EXIT(m) \
         do\
@@ -55,6 +63,13 @@ void send_fd(int sock_fd, int send_fd) {
 	ret = sendmsg(sock_fd, &msg, 0);
 	if (ret != 1)
 		ERR_EXIT("sendmsg");
+#ifdef DEBUG_OUTPUT
+	printf("sock_fd:\t%d\n", sock_fd);
+	printf("send_fd:\t%d\n", send_fd);
+	// printf("sock_fd:\t%d\n", sock_fd);
+#endif
+// todo need this
+	close(send_fd);
 }
 
 int recv_fd(const int sock_fd) {
@@ -91,7 +106,11 @@ int recv_fd(const int sock_fd) {
 	recv_fd = *p_fd;
 	if (recv_fd == -1)
 		ERR_EXIT("no passed fd");
-	
+#ifdef DEBUG_OUTPUT
+	printf("sock_fd:\t%d\n", sock_fd);
+	printf("recv_fd:\t%d\n", recv_fd);
+	// printf("sock_fd:\t%d\n", sock_fd);
+#endif
 	return recv_fd;
 }
 
@@ -99,7 +118,7 @@ int recv_fd(const int sock_fd) {
 typedef struct {
 	pthread_t tid;
 	struct event_base *base;
-	struct event event;
+	struct event *thread_event;
 	int read_fd;
 	int write_fd;
 } LIBEVENT_THREAD;
@@ -109,39 +128,75 @@ typedef struct {
 	struct event_base *base;
 } DISPATCHER_THREAD;
 
+//-------------------------------------------------
+const int NUM_WORKERS = 20;
+static const int NUM_FD = 1200;
+static const int MAX_EVENT_COUNT = (NUM_FD >> 2);
 
-const int thread_num = 10;
-
-LIBEVENT_THREAD *threads;
-DISPATCHER_THREAD dispatcher_thread;
+static LIBEVENT_THREAD threads[NUM_WORKERS];
+static DISPATCHER_THREAD dispatcher_thread;
 int last_thread = 0;
 //-------------------------------------------------
 
-unsigned short nPort = 9000;
+static const unsigned short PORT_NUMBER = SERVER_PORT;
 struct event_base *pEventMgr = NULL;
 
 void Reader(int sock, short event, void *arg) {
-	fprintf(stderr, "reader ---------------%d\n", sock);
-	char buffer[1024];
-	memset(buffer, 0, sizeof(buffer));
+	// fprintf(stderr, "reader ---------------%d\n", sock);
+	// char buffer[1024];
+	// memset(buffer, 0, sizeof(buffer));
+	//
+	// int ret = -1;
+	//
+	// fprintf(stderr, "1 ---------------%d\n", sock);
+	// ret = recv(sock, buffer, sizeof(buffer), 0);
+	// fprintf(stderr, "2 ---------------%d\n", sock);
+	// if (-1 == ret || 0 == ret) {
+	// 	printf("recv error:%s\n", strerror(errno));
+	// 	return;
+	// }
+	//
+	// printf("recv data:%s\n", buffer);
 	
-	int ret = -1;
-	fprintf(stderr, "1 ---------------%d\n", sock);
-	ret = recv(sock, buffer, sizeof(buffer), 0);
-	fprintf(stderr, "2 ---------------%d\n", sock);
-	if (-1 == ret || 0 == ret) {
-		printf("recv error:%s\n", strerror(errno));
+	
+	Package package_buffer;
+	char recv_package_buffer[PACKAGE_BUFFER_SIZE];
+	// Package package_buffer;
+	memset(&package_buffer, 0, sizeof(Package)); // clean to 0
+	int ret = recv(sock, recv_package_buffer, PACKAGE_BUFFER_SIZE, 0);
+	if (ret <= 0) {
+#ifdef DEBUG_OUTPUT
+		printf("close connection from fd: %d \n", sock);
+#endif
+		// todo may need optimize
+		// evutil_closesocket(sock);
+		close(sock);
+		event_del((struct event *) arg);
+		event_free((struct event *) arg);
 		return;
+	} else {
+		memcpy(&package_buffer, recv_package_buffer, sizeof(Package));
+#ifdef DEBUG_OUTPUT
+		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", sock, (unsigned int) package_buffer.id,
+		       package_buffer.key.id, package_buffer.value.id);
+#endif
 	}
 	
-	printf("recv data:%s\n", buffer);
+	///////////////////////////////////////////////////////
 	
+	// send the response
 	
-	//strcat(buffer,", hello,client\n");
-	//send(sock,buffer,strlen(buffer),0);
-	
-	
-	return;
+	// Result result(ClientInfoArr[epollEventFD].value.id);
+	Result result(package_buffer.value.id);
+	int sendbytes = send(sock, (char *) &result, sizeof(Result), 0);
+	if (sendbytes < 0) {
+		perror("send failed.\n");
+		return;
+	}
+#ifdef DEBUG_OUTPUT
+	printf("fd: %d \t send the Result, id:%d\n", sock, result.id);
+#endif
+
 }
 
 static void thread_libevent_process(int fd, short which, void *arg) {
@@ -150,86 +205,116 @@ static void thread_libevent_process(int fd, short which, void *arg) {
 	LIBEVENT_THREAD *me = (LIBEVENT_THREAD *) arg;
 	
 	int socket_fd = recv_fd(me->read_fd);
-	
+#ifdef DEBUG_OUTPUT
+	printf("me->read_fd:\t%d\n", me->read_fd);
+	printf("me->write_fd:\t%d\n", me->write_fd);
+	printf("socket_fd:\t%d\n", socket_fd);
+#endif
 	struct event *pReadEvent = NULL;
 	pReadEvent = (struct event *) malloc(sizeof(struct event));
 	
-	event_assign(pReadEvent, me->base, socket_fd, EV_READ | EV_PERSIST, Reader, NULL);
+	event_assign(pReadEvent, me->base, socket_fd, EV_READ | EV_PERSIST,
+	             Reader, pReadEvent);
 	
 	event_add(pReadEvent, NULL);
 	
-	return;
 }
 
 static void *worker_thread(void *arg) {
-	
 	LIBEVENT_THREAD *me = (LIBEVENT_THREAD *) arg;
 	me->tid = pthread_self();
+	// because at the beginning, there are no events,
+	// so we need event_base_loop instead of event_base_dispatch()
 	
+	/**
+	  Wait for events to become active, and run their callbacks.
+	  This is a more flexible version of event_base_dispatch().
+	
+	  By default, this loop will run the event base until either there are no more
+	  pending or active events, or until something calls event_base_loopbreak() or
+	  event_base_loopexit().  You can override this behavior with the 'flags'
+	  argument.
+	
+	  @param eb the event_base structure returned by event_base_new() or
+	     event_base_new_with_config()
+	  @param flags any combination of EVLOOP_ONCE | EVLOOP_NONBLOCK
+	  @return 0 if successful, -1 if an error occurred, or 1 if we exited because
+	     no events were pending or active.
+	  */
 	event_base_loop(me->base, 0);
-	
-	
-	return NULL;
+	return nullptr;
 }
 
 
 void ListenAccept(int sock, short event, void *arg) {
+#ifdef DEBUG_OUTPUT
 	printf("ListenAccept ................\n");
+#endif
 	// 1,读 --也就是accept
 	struct sockaddr_in ClientAddr;
 	int nClientSocket = -1;
 	socklen_t ClientLen = sizeof(ClientAddr);
-	printf("---------------------------1\n");
+	
 	nClientSocket = accept(sock, (struct sockaddr *) &ClientAddr, &ClientLen);
-	printf("---------------------------2,%d\n", nClientSocket);
+#ifdef DEBUG_OUTPUT
+	printf("---------------------------%d\n", nClientSocket);
+#endif
 	if (-1 == nClientSocket) {
 		printf("accet error:%s\n", strerror(errno));
 		return;
 	}
-	fprintf(stderr, "a client connect to server ....\n");
+#ifdef DEBUG_OUTPUT
+	printf("accept a client connection from:\t%d\n", nClientSocket);
+#endif
 	
 	//进行数据分发
-	int tid = (last_thread + 1) % thread_num;        //memcached中线程负载均衡算法
+	int tid = (last_thread + 1) % NUM_WORKERS;        //memcached中线程负载均衡算法
 	LIBEVENT_THREAD *thread = threads + tid;
 	last_thread = tid;
 	send_fd(thread->write_fd, nClientSocket);
-	
-	return;
 }
 
 
-int main() {
-	
-	int nSocket = -1;
+int main(int argc, char **argv) {
+	printf("start %s \n", argv[0]);
+	int server_fd = -1;
 	int nRet = -1;
 	
-	nSocket = socket(PF_INET, SOCK_STREAM, 0);
-	if (-1 == nSocket) //
+	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (-1 == server_fd) //
 	{
 		printf("socket error:%s\n", strerror(errno));
 		return -1;
 	}
 	
 	int value = 1;
-	setsockopt(nSocket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+	// original version
+	// setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+	/** Do platform-specific operations to make a listener socket reusable.
+	    Specifically, we want to make sure that another program will be able
+	    to bind this address right after we've closed the listener.
+	    This differs from Windows's interpretation of "reusable", which
+	    allows multiple listeners to bind the same address at the same time.
 	
+	    @param sock The socket to make reusable
+	    @return 0 on success, -1 on failure
+ 	*/
+	evutil_make_listen_socket_reuseable(server_fd);
 	
-	struct sockaddr_in ServerAddr;
-	ServerAddr.sin_family = PF_INET;
-	ServerAddr.sin_port = htons(nPort);
-	ServerAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	struct sockaddr_in server_addr;
+	bzero(&server_addr, sizeof(server_addr));
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	// server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	server_addr.sin_port = htons(PORT_NUMBER);
 	
-	nRet = bind(nSocket, (struct sockaddr *) &ServerAddr, (socklen_t)
-	sizeof(ServerAddr));
-	if (-1 == nRet) {
+	if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
 		printf("bind error:%s\n", strerror(errno));
 		return -1;
 	}
 	
-	
 	//int listen(int sockfd, int backlog);
-	nRet = listen(nSocket, 100);
-	if (-1 == nRet) {
+	if (listen(server_fd, MAX_EVENT_COUNT) < 0) {
 		printf("listen error:%s\n", strerror(errno));
 		return -1;
 	}
@@ -249,27 +334,25 @@ int main() {
 	
 	pthread_t tid;
 	
-	dispatcher_thread.base = event_init();
+	dispatcher_thread.base = event_base_new();
 	if (dispatcher_thread.base == NULL) {
 		perror("event_init( base )");
 		return 1;
 	}
 	dispatcher_thread.tid = pthread_self();
 	
-	threads = (LIBEVENT_THREAD *) calloc(thread_num, sizeof(LIBEVENT_THREAD));
-	if (threads == NULL) {
-		perror("calloc");
-		return 1;
-	}
+	/** Do platform-specific operations as needed to make a socket nonblocking.
+	//     @param sock The socket to make nonblocking
+	//     @return 0 on success, -1 on failure
+	// */
+	evutil_make_socket_nonblocking(server_fd);
 	
-	for (i = 0; i < thread_num; i++) {
+	for (i = 0; i < NUM_WORKERS; i++) {
 		/* Create two new sockets, of type TYPE in domain DOMAIN and using
 		   protocol PROTOCOL, which are connected to each other, and put file
 		   descriptors for them in FDS[0] and FDS[1].  If PROTOCOL is zero,
 		   one will be chosen automatically.  Returns 0 on success, -1 for errors.  */
-		ret = socketpair(AF_LOCAL, SOCK_STREAM, 0, fd);
-		
-		if (ret == -1) {
+		if (socketpair(AF_LOCAL, SOCK_STREAM, 0, fd) < 0) {
 			perror("socketpair()");
 			return 1;
 		}
@@ -277,38 +360,81 @@ int main() {
 		threads[i].read_fd = fd[1];
 		threads[i].write_fd = fd[0];
 		
-		threads[i].base = event_init();
-		if (threads[i].base == NULL) {
+		threads[i].base = event_base_new();
+		if (threads[i].base == nullptr) {
 			perror("event_init()");
 			return 1;
 		}
 		
-		//工作线程处理可读处理
-		event_set(&threads[i].event, threads[i].read_fd, EV_READ | EV_PERSIST, thread_libevent_process, &threads[i]);
-		event_base_set(threads[i].base, &threads[i].event);
-		if (event_add(&threads[i].event, 0) == -1) {
+		// worker thread make its event able to read
+		// deprecated version
+		// event_set(&threads[i].thread_event, threads[i].read_fd, EV_READ | EV_PERSIST,
+		//           thread_libevent_process, &threads[i]);
+		// event_base_set(threads[i].base, &threads[i].thread_event);
+		threads[i].thread_event = event_new(threads[i].base, threads[i].read_fd,
+		                                    EV_READ | EV_PERSIST, thread_libevent_process, &threads[i]);
+		
+		if (event_add(threads[i].thread_event, 0) == -1) {
 			perror("event_add()");
 			return 1;
 		}
 	}
 	
-	for (i = 0; i < thread_num; i++) {
+	// create and start pthreads to work
+	for (i = 0; i < NUM_WORKERS; i++) {
 		pthread_create(&tid, NULL, worker_thread, &threads[i]);
 	}
-
-
-//2,创建具体的事件,
 	
+	//2,创建具体的事件,
 	struct event ListenEvent;
 	
 	//3, 把事件，套接字，libevent的管理器给管理起来， 也叫注册
-	//int event_assign(struct event *, struct event_base *, evutil_socket_t, short, event_callback_fn, void *);
-	if (-1 == event_assign(&ListenEvent, dispatcher_thread.base, nSocket, EV_READ | EV_PERSIST, ListenAccept, NULL)) {
+	/**
+  Prepare a new, already-allocated event structure to be added.
+
+  The function event_assign() prepares the event structure ev to be used
+  in future calls to event_add() and event_del().  Unlike event_new(), it
+  doesn't allocate memory itself: it requires that you have already
+  allocated a struct event, probably on the heap.  Doing this will
+  typically make your code depend on the size of the event structure, and
+  thereby create incompatibility with future versions of Libevent.
+
+  The easiest way to avoid this problem is just to use event_new() and
+  event_free() instead.
+
+  A slightly harder way to future-proof your code is to use
+  event_get_struct_event_size() to determine the required size of an event
+  at runtime.
+
+  Note that it is NOT safe to call this function on an event that is
+  active or pending.  Doing so WILL corrupt internal data structures in
+  Libevent, and lead to strange, hard-to-diagnose bugs.  You _can_ use
+  event_assign to change an existing event, but only if it is not active
+  or pending!
+
+  The arguments for this function, and the behavior of the events that it
+  makes, are as for eve'pent_new().
+
+  @param ev an event struct to be modified
+  @param base the event base to which ev should be attached.
+  @param fd the file descriptor to be monitored
+  @param events desired events to monitor; can be EV_READ and/or EV_WRITE
+  @param callback callback function to be invoked when the event occurs
+  @param callback_arg an argument to be passed to the callback function
+
+  @return 0 if success, or -1 on invalid arguments.
+
+  @see event_new(), event_add(), event_del(), event_base_once(),
+    event_get_struct_event_size()
+  */
+	if (-1 == event_assign(&ListenEvent, dispatcher_thread.base, server_fd,
+	                       EV_READ | EV_PERSIST, ListenAccept, NULL)) {
 		printf("event_assign error:%s\n", strerror(errno));
 		return -1;
 	}
 	
 	// 4, 让我们注册的事件 可以被调度
+	// &ListenEvent=event_new(dispatcher_thread.base,server_fd,EV_READ | EV_PERSIST,ListenAccept, nullptr);
 	if (-1 == event_add(&ListenEvent, NULL)) {
 		printf("event_add error:%s\n", strerror(errno));
 		return -1;
