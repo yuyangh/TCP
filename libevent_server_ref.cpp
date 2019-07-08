@@ -1,126 +1,382 @@
+/***********************************************************************************************************
+,编译程序 
+g++ -Wall -g  event-server.c -o server -levent -lpthread
+*************************************************************************************************************/
+#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <iostream>
-#include <thread>
-#include <sys/epoll.h>
-#include <arpa/inet.h>
-#include <iostream>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/epoll.h>
-#include <netinet/in.h>
+#include <sys/un.h>
+#include <string.h>
+#include <errno.h>
 #include <arpa/inet.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <csignal>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <errno.h>
+#include "event.h"
+#include <stdlib.h>
+#include <pthread.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
+#include <event2/thread.h>
+#include <event2/util.h>
+#include <event2/buffer.h>
+#include <event2/listener.h>
+#include <fcntl.h>
+#include "data.h"
+#include "ring_buffer.hpp"
 
-#define LISTEN_PORT 8000
-#define LISTEN_BACKLOG 32
+#define ERR_EXIT(m) \
+        do\
+        { \
+                perror(m); \
+                exit(EXIT_FAILURE); \
+        } while(0)\
 
-void do_accept_cb(evutil_socket_t listener, short event, void *arg);
 
-void read_cb(struct bufferevent *bev, void *arg);
-
-void error_cb(struct bufferevent *bev, short event, void *arg);
-
-void write_cb(struct bufferevent *bev, void *arg);
-
-int main(int argc, char *argv[]) {
+void send_fd(int sock_fd, int send_fd) {
 	int ret;
-	evutil_socket_t listener;
-	listener = socket(AF_INET, SOCK_STREAM, 0);
-	if (listener < 0) {
-		printf("socket error!\n");
-		return 1;
+	struct msghdr msg;
+	struct cmsghdr *p_cmsg;
+	struct iovec vec;
+	char cmsgbuf[CMSG_SPACE(sizeof(send_fd))];
+	int *p_fds;
+	char sendchar = 0;
+	msg.msg_control = cmsgbuf;
+	msg.msg_controllen = sizeof(cmsgbuf);
+	p_cmsg = CMSG_FIRSTHDR(&msg);
+	p_cmsg->cmsg_level = SOL_SOCKET;
+	p_cmsg->cmsg_type = SCM_RIGHTS;
+	p_cmsg->cmsg_len = CMSG_LEN(sizeof(send_fd));
+	p_fds = (int *) CMSG_DATA(p_cmsg);
+	*p_fds = send_fd; // 通过传递辅助数据的方式传递文件描述符
+	
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_iov = &vec;
+	msg.msg_iovlen = 1; //主要目的不是传递数据，故只传1个字符
+	msg.msg_flags = 0;
+	
+	vec.iov_base = &sendchar;
+	vec.iov_len = sizeof(sendchar);
+	ret = sendmsg(sock_fd, &msg, 0);
+	if (ret != 1)
+		ERR_EXIT("sendmsg");
+}
+
+int recv_fd(const int sock_fd) {
+	int ret;
+	struct msghdr msg;
+	char recvchar;
+	struct iovec vec;
+	int recv_fd;
+	char cmsgbuf[CMSG_SPACE(sizeof(recv_fd))];
+	struct cmsghdr *p_cmsg;
+	int *p_fd;
+	vec.iov_base = &recvchar;
+	vec.iov_len = sizeof(recvchar);
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_iov = &vec;
+	msg.msg_iovlen = 1;
+	msg.msg_control = cmsgbuf;
+	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_flags = 0;
+	
+	p_fd = (int *) CMSG_DATA(CMSG_FIRSTHDR(&msg));
+	*p_fd = -1;
+	ret = recvmsg(sock_fd, &msg, 0);
+	if (ret != 1)
+		ERR_EXIT("recvmsg");
+	
+	p_cmsg = CMSG_FIRSTHDR(&msg);
+	if (p_cmsg == NULL)
+		ERR_EXIT("no passed fd");
+	
+	
+	p_fd = (int *) CMSG_DATA(p_cmsg);
+	recv_fd = *p_fd;
+	if (recv_fd == -1)
+		ERR_EXIT("no passed fd");
+	
+	return recv_fd;
+}
+
+//-------------------------------------------------
+typedef struct {
+	pthread_t tid;
+	struct event_base *base;
+	struct event event;
+	int read_fd;
+	int write_fd;
+} LIBEVENT_THREAD;
+
+typedef struct {
+	pthread_t tid;
+	struct event_base *base;
+} DISPATCHER_THREAD;
+
+
+const int thread_num = 20;
+
+static LIBEVENT_THREAD *threads;
+static DISPATCHER_THREAD dispatcher_thread;
+int last_thread = 0;
+//-------------------------------------------------
+
+unsigned short nPort = SERVER_PORT;
+struct event_base *pEventMgr = NULL;
+
+void Reader(int sock, short event, void *arg) {
+	// fprintf(stderr, "reader ---------------%d\n", sock);
+	// char buffer[1024];
+	// memset(buffer, 0, sizeof(buffer));
+	//
+	// int ret = -1;
+	//
+	// fprintf(stderr, "1 ---------------%d\n", sock);
+	// ret = recv(sock, buffer, sizeof(buffer), 0);
+	// fprintf(stderr, "2 ---------------%d\n", sock);
+	// if (-1 == ret || 0 == ret) {
+	// 	printf("recv error:%s\n", strerror(errno));
+	// 	return;
+	// }
+	//
+	// printf("recv data:%s\n", buffer);
+	
+	
+	Package package_buffer;
+	char recv_package_buffer[PACKAGE_BUFFER_SIZE];
+	// Package package_buffer;
+	memset(&package_buffer, 0, sizeof(Package)); // clean to 0
+	int ret = recv(sock, recv_package_buffer, PACKAGE_BUFFER_SIZE, 0);
+	if (ret <= 0) {
+#ifdef DEBUG_OUTPUT
+		printf("close connection from fd: %d \n", epollEventFD);
+#endif
+		
+		return;
+	} else {
+		memcpy(&package_buffer, recv_package_buffer, sizeof(Package));
+#ifdef DEBUG_OUTPUT
+		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", epollEventFD, (unsigned int) package_buffer.id,
+			   package_buffer.key.id, package_buffer.value.id);
+#endif
 	}
 	
-	//端口重用，查看源码evutil.c中可以知道就是对setsockopt做了层封装,之所以这样做是因为为了和Win32 networking API兼容
-	evutil_make_listen_socket_reuseable(listener);
+	///////////////////////////////////////////////////////
 	
-	struct sockaddr_in sin;
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = htonl(INADDR_ANY);
-	sin.sin_addr.s_addr = inet_addr("127.0.0.1");
-	sin.sin_port = htons(LISTEN_PORT);
+	// send the response
+#ifdef DEBUG_OUTPUT
+	printf("Read ClientInfoArr: fd: %d, value:%d \n", epollEventFD,
+		   ClientInfoArr[epollEventFD].value.id);
+#endif
 	
-	if (bind(listener, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
-		perror("bind");
-		return 1;
+	// Result result(ClientInfoArr[epollEventFD].value.id);
+	Result result(0);
+	int sendbytes = send(sock, (char *) &result, sizeof(Result), 0);
+	if (sendbytes < 0) {
+		perror("send failed.\n");
+		return;
+	}
+#ifdef DEBUG_OUTPUT
+	printf("fd: %d \t send the Result, id:%d\n", epollEventFD, result.id);
+#endif
+
+}
+
+static void thread_libevent_process(int fd, short which, void *arg) {
+	int ret;
+	char buf[128];
+	LIBEVENT_THREAD *me = (LIBEVENT_THREAD *) arg;
+	
+	int socket_fd = recv_fd(me->read_fd);
+	
+	struct event *pReadEvent = NULL;
+	pReadEvent = (struct event *) malloc(sizeof(struct event));
+	
+	event_assign(pReadEvent, me->base, socket_fd, EV_READ | EV_PERSIST, Reader, NULL);
+	
+	event_add(pReadEvent, NULL);
+	
+	return;
+}
+
+static void *worker_thread(void *arg) {
+	
+	LIBEVENT_THREAD *me = (LIBEVENT_THREAD *) arg;
+	me->tid = pthread_self();
+	
+	event_base_loop(me->base, 0);
+	
+	
+	return NULL;
+}
+
+
+void ListenAccept(int sock, short event, void *arg) {
+#ifdef DEBUG_OUTPUT
+	printf("ListenAccept ................\n");
+#endif
+	// 1,读 --也就是accept
+	struct sockaddr_in ClientAddr;
+	int nClientSocket = -1;
+	socklen_t ClientLen = sizeof(ClientAddr);
+	
+	nClientSocket = accept(sock, (struct sockaddr *) &ClientAddr, &ClientLen);
+#ifdef DEBUG_OUTPUT
+	printf("---------------------------%d\n", nClientSocket);
+#endif
+	if (-1 == nClientSocket) {
+		printf("accet error:%s\n", strerror(errno));
+		return;
+	}
+#ifdef DEBUG_OUTPUT
+	fprintf(stderr, "a client connect to server ....\n");
+#endif
+	
+	//进行数据分发
+	int tid = (last_thread + 1) % thread_num;        //memcached中线程负载均衡算法
+	LIBEVENT_THREAD *thread = threads + tid;
+	last_thread = tid;
+	send_fd(thread->write_fd, nClientSocket);
+	
+	return;
+}
+
+
+int main(int argc, char** argv) {
+	printf("start %s \n", argv[0]);
+	int server_fd = -1;
+	int nRet = -1;
+	
+	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (-1 == server_fd) //
+	{
+		printf("socket error:%s\n", strerror(errno));
+		return -1;
 	}
 	
-	if (listen(listener, LISTEN_BACKLOG) < 0) {
-		perror("listen");
-		return 1;
+	int value = 1;
+	evutil_make_listen_socket_reuseable(server_fd);
+	// setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+	
+	
+	struct sockaddr_in server_addr;
+	bzero(&server_addr, sizeof(server_addr));
+	server_addr.sin_family = PF_INET;
+	server_addr.sin_port = htons(nPort);
+	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	nRet = bind(server_fd, (struct sockaddr *) &server_addr, (socklen_t)
+	sizeof(server_addr));
+	if (-1 == nRet) {
+		printf("bind error:%s\n", strerror(errno));
+		return -1;
+	}
+	
+	
+	//int listen(int sockfd, int backlog);
+	nRet = listen(server_fd, 100);
+	if (-1 == nRet) {
+		printf("listen error:%s\n", strerror(errno));
+		return -1;
 	}
 	
 	printf("Listening...\n");
+
+
+//开始创建libvent
+//--主线程只管监听socket,连接socket由工作线程来管理------------------------------------
+//当有新的连接到来时，主线程就接受之并将新返回的连接socket派发给某个工作线程
+//此后该新socket上的任何I/O操作都有被选中的工作线程来处理
+//工作线程检测到管道上有数据可读
+//--------------------------------------------------------------------------------------
+	int ret;
+	int i;
+	int fd[2];
 	
-	evutil_make_socket_nonblocking(listener);//设置为非阻塞模式，查看源码evutil.c中可以知道就是对fcntl做了层封装  
+	pthread_t tid;
 	
-	struct event_base *base = event_base_new();//创建一个event_base对象也既是创建了一个新的libevent实例
-	if (!base) {
-		fprintf(stderr, "Could not initialize libevent!\n");
+	dispatcher_thread.base = event_init();
+	if (dispatcher_thread.base == NULL) {
+		perror("event_init( base )");
+		return 1;
+	}
+	dispatcher_thread.tid = pthread_self();
+	
+	threads = (LIBEVENT_THREAD *) calloc(thread_num, sizeof(LIBEVENT_THREAD));
+	if (threads == NULL) {
+		perror("calloc");
 		return 1;
 	}
 	
-	//创建并绑定一个event
-	struct event *listen_event;
-	listen_event = event_new(base, listener, EV_READ | EV_PERSIST, do_accept_cb, (void *) base);
-	event_add(listen_event, NULL);//注册时间，参数NULL表示无超时设置
-	event_base_dispatch(base); //程序进入无限循环，等待就绪事件并执行事件处理
+	for (i = 0; i < thread_num; i++) {
+		/* Create two new sockets, of type TYPE in domain DOMAIN and using
+		   protocol PROTOCOL, which are connected to each other, and put file
+		   descriptors for them in FDS[0] and FDS[1].  If PROTOCOL is zero,
+		   one will be chosen automatically.  Returns 0 on success, -1 for errors.  */
+		ret = socketpair(AF_LOCAL, SOCK_STREAM, 0, fd);
+		
+		if (ret == -1) {
+			perror("socketpair()");
+			return 1;
+		}
+		
+		threads[i].read_fd = fd[1];
+		threads[i].write_fd = fd[0];
+		
+		threads[i].base = event_init();
+		if (threads[i].base == NULL) {
+			perror("event_init()");
+			return 1;
+		}
+		
+		//工作线程处理可读处理
+		event_set(&threads[i].event, threads[i].read_fd, EV_READ | EV_PERSIST,
+		          thread_libevent_process, &threads[i]);
+		event_base_set(threads[i].base, &threads[i].event);
+		if (event_add(&threads[i].event, 0) == -1) {
+			perror("event_add()");
+			return 1;
+		}
+	}
 	
-	printf("The End.");
+	for (i = 0; i < thread_num; i++) {
+		pthread_create(&tid, NULL, worker_thread, &threads[i]);
+	}
+	
+	
+	//2,创建具体的事件,
+	struct event ListenEvent;
+	
+	//3, 把事件，套接字，libevent的管理器给管理起来， 也叫注册
+	//int event_assign(struct event *, struct event_base *, evutil_socket_t, short, event_callback_fn, void *);
+	if (-1 == event_assign(&ListenEvent, dispatcher_thread.base, server_fd,
+	                       EV_READ | EV_PERSIST, ListenAccept, NULL)) {
+		printf("event_assign error:%s\n", strerror(errno));
+		return -1;
+	}
+	
+	// 4, 让我们注册的事件 可以被调度
+	if (-1 == event_add(&ListenEvent, NULL)) {
+		printf("event_add error:%s\n", strerror(errno));
+		return -1;
+	}
+	
+	printf("libvent start run ...\n");
+	// 5,运行libevent
+	if (-1 == event_base_dispatch(dispatcher_thread.base)) {
+		printf("event_base_dispatch error:%s\n", strerror(errno));
+		return -1;
+	}
+	
+	printf("---------------------------\n");
+
+
+//--------------------------------------------------------------------------------------
+	
+	
 	return 0;
 }
-
-void do_accept_cb(evutil_socket_t listener, short event, void *arg) {
-	struct event_base *base = (struct event_base *) arg;
-	evutil_socket_t fd;
-	struct sockaddr_in sin;
-	socklen_t slen;
-	fd = accept(listener, (struct sockaddr *) &sin, &slen);
-	if (fd < 0) {
-		perror("accept");
-		return;
-	}
-	
-	printf("accept: fd = %u\n", fd);
-	
-	//使用bufferevent_socket_new创建一个struct bufferevent *bev，关联该sockfd，托管给event_base
-	struct bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	//BEV_OPT_CLOSE_ON_FREE表示释放bufferevent时关闭底层传输端口。这将关闭底层套接字，释放底层bufferevent等。
-	
-	bufferevent_setcb(bev, read_cb, NULL, error_cb, arg);
-	bufferevent_enable(bev, EV_READ | EV_WRITE | EV_PERSIST);//启用read/write事件
-}
-
-void read_cb(struct bufferevent *bev, void *arg) {
-#define MAX_LINE    256
-	char line[MAX_LINE + 1];
-	int n;
-	evutil_socket_t fd = bufferevent_getfd(bev);
-	
-	while (n = bufferevent_read(bev, line, MAX_LINE), n > 0) {
-		line[n] = '\0';
-		printf("fd=%u, read line: %s\n", fd, line);
-		
-		bufferevent_write(bev, line, n);
-	}
-}
-
-void write_cb(struct bufferevent *bev, void *arg) {}
-
-void error_cb(struct bufferevent *bev, short event, void *arg) {
-	evutil_socket_t fd = bufferevent_getfd(bev);
-	printf("fd = %u, ", fd);
-	if (event & BEV_EVENT_TIMEOUT) {
-		printf("Timed out\n"); //if bufferevent_set_timeouts() called
-	} else if (event & BEV_EVENT_EOF) {
-		printf("connection closed\n");
-	} else if (event & BEV_EVENT_ERROR) {
-		printf("some other error\n");
-	}
-	bufferevent_free(bev);
-}  
