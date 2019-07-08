@@ -178,7 +178,7 @@ void Reader(int sock, short event, void *arg) {
 		memcpy(&package_buffer, recv_package_buffer, sizeof(Package));
 #ifdef DEBUG_OUTPUT
 		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", sock, (unsigned int) package_buffer.id,
-		       package_buffer.key.id, package_buffer.value.id);
+			   package_buffer.key.id, package_buffer.value.id);
 #endif
 	}
 	
@@ -200,23 +200,23 @@ void Reader(int sock, short event, void *arg) {
 }
 
 static void thread_libevent_process(int fd, short which, void *arg) {
-	int ret;
-	char buf[128];
-	LIBEVENT_THREAD *me = (LIBEVENT_THREAD *) arg;
+	LIBEVENT_THREAD *current_thread = (LIBEVENT_THREAD *) arg;
 	
-	int socket_fd = recv_fd(me->read_fd);
+	int socket_fd = recv_fd(current_thread->read_fd);
 #ifdef DEBUG_OUTPUT
-	printf("me->read_fd:\t%d\n", me->read_fd);
-	printf("me->write_fd:\t%d\n", me->write_fd);
+	printf("current_thread->read_fd:\t%d\n", current_thread->read_fd);
+	printf("current_thread->write_fd:\t%d\n", current_thread->write_fd);
 	printf("socket_fd:\t%d\n", socket_fd);
 #endif
-	struct event *pReadEvent = NULL;
-	pReadEvent = (struct event *) malloc(sizeof(struct event));
+	struct event *thread_read_event = nullptr;
+	// cannot use event_new because we need to bind the argument
+	thread_read_event = (struct event *) malloc(sizeof(struct event));
+	event_assign(thread_read_event, current_thread->base, socket_fd, EV_READ | EV_PERSIST,
+	             Reader, thread_read_event);
+	// thread_read_event=event_new(current_thread->base, socket_fd, EV_READ | EV_PERSIST,
+	//           Reader, thread_read_event);
 	
-	event_assign(pReadEvent, me->base, socket_fd, EV_READ | EV_PERSIST,
-	             Reader, pReadEvent);
-	
-	event_add(pReadEvent, NULL);
+	event_add(thread_read_event, nullptr);
 	
 }
 
@@ -386,72 +386,25 @@ int main(int argc, char **argv) {
 	}
 	
 	//2,创建具体的事件,
-	struct event ListenEvent;
+	struct event *ListenEvent;
 	
 	//3, 把事件，套接字，libevent的管理器给管理起来， 也叫注册
-	/**
-  Prepare a new, already-allocated event structure to be added.
-
-  The function event_assign() prepares the event structure ev to be used
-  in future calls to event_add() and event_del().  Unlike event_new(), it
-  doesn't allocate memory itself: it requires that you have already
-  allocated a struct event, probably on the heap.  Doing this will
-  typically make your code depend on the size of the event structure, and
-  thereby create incompatibility with future versions of Libevent.
-
-  The easiest way to avoid this problem is just to use event_new() and
-  event_free() instead.
-
-  A slightly harder way to future-proof your code is to use
-  event_get_struct_event_size() to determine the required size of an event
-  at runtime.
-
-  Note that it is NOT safe to call this function on an event that is
-  active or pending.  Doing so WILL corrupt internal data structures in
-  Libevent, and lead to strange, hard-to-diagnose bugs.  You _can_ use
-  event_assign to change an existing event, but only if it is not active
-  or pending!
-
-  The arguments for this function, and the behavior of the events that it
-  makes, are as for eve'pent_new().
-
-  @param ev an event struct to be modified
-  @param base the event base to which ev should be attached.
-  @param fd the file descriptor to be monitored
-  @param events desired events to monitor; can be EV_READ and/or EV_WRITE
-  @param callback callback function to be invoked when the event occurs
-  @param callback_arg an argument to be passed to the callback function
-
-  @return 0 if success, or -1 on invalid arguments.
-
-  @see event_new(), event_add(), event_del(), event_base_once(),
-    event_get_struct_event_size()
-  */
-	if (-1 == event_assign(&ListenEvent, dispatcher_thread.base, server_fd,
-	                       EV_READ | EV_PERSIST, ListenAccept, NULL)) {
-		printf("event_assign error:%s\n", strerror(errno));
-		return -1;
-	}
+	ListenEvent = event_new(dispatcher_thread.base, server_fd, EV_READ | EV_PERSIST, ListenAccept, nullptr);
 	
 	// 4, 让我们注册的事件 可以被调度
-	// &ListenEvent=event_new(dispatcher_thread.base,server_fd,EV_READ | EV_PERSIST,ListenAccept, nullptr);
-	if (-1 == event_add(&ListenEvent, NULL)) {
+	if (-1 == event_add(ListenEvent, NULL)) {
 		printf("event_add error:%s\n", strerror(errno));
 		return -1;
 	}
 	
-	printf("libvent start run ...\n");
 	// 5,运行libevent
+	printf("libvent starts running ...\n");
 	if (-1 == event_base_dispatch(dispatcher_thread.base)) {
 		printf("event_base_dispatch error:%s\n", strerror(errno));
 		return -1;
 	}
 	
-	printf("---------------------------\n");
-
-
-//--------------------------------------------------------------------------------------
-	
-	
+	event_free(ListenEvent);
+	printf("The End. Should not exist\n");
 	return 0;
 }
