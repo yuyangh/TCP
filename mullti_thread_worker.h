@@ -35,7 +35,7 @@ public:
 	 * a wrapper for the RingBuffer class
 	 * @param length set the length for the ring_buffer
 	 */
-	MultiThreadWorker(size_t length = 1000) : ring_buffer(length) {}
+	MultiThreadWorker(size_t length = 10000) : ring_buffer(length) {}
 	
 	inline void addJob(struct epoll_event &job) {
 		ring_buffer.Push(job);

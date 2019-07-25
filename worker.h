@@ -35,7 +35,7 @@ public:
 	
 	SingleThreadWorker() {}
 	
-	size_t size(){
+	size_t size() {
 		return clientConnections.size();
 	}
 	
