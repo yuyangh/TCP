@@ -4,3 +4,8 @@
 cmake-build-debug/
 
 .o
+
+client
+
+client_pool
+
