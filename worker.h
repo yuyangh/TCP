@@ -29,11 +29,11 @@
 #include <csignal>
 #include "data.h"
 
-class Multi_Thread_Worker {
+class SingleThreadWorker {
 public:
 	std::queue<int> clientConnections;
 	
-	Multi_Thread_Worker() {}
+	SingleThreadWorker() {}
 	
 	size_t size(){
 		return clientConnections.size();

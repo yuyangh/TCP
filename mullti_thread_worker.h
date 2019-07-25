@@ -29,23 +29,32 @@
 #include "data.h"
 #include "ring_buffer.hpp"
 
-static const size_t MAX_QUEUE_SIZE=100;
-
-class Multi_Thread_Worker {
+class MultiThreadWorker {
 public:
+	/**
+	 * a wrapper for the RingBuffer class
+	 * @param length set the length for the ring_buffer
+	 */
+	MultiThreadWorker(size_t length = 1000) : ring_buffer(length) {}
 	
-	Multi_Thread_Worker():ring_buffer(MAX_QUEUE_SIZE) {}
-	
-	inline void addJob(struct epoll_event &event){
-		ring_buffer.Push((event));
+	inline void addJob(struct epoll_event &job) {
+		ring_buffer.Push(job);
 	}
 	
-	struct epoll_event PopJob(){
+	/**
+	 * get and pop the the job from the queue
+	 * @return
+	 */
+	inline struct epoll_event PopJob() {
 		return ring_buffer.Pop();
+	}
+	
+	size_t Size() {
+		return ring_buffer.Length();
 	}
 
 private:
-	CarpLog::RingBuffer<struct epoll_event> ring_buffer;
+	RingBuffer<struct epoll_event, true, true> ring_buffer;
 };
 
 #endif //TCPEXAMPLE_MULLTI_THREAD_WORKER_H
