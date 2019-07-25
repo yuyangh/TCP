@@ -17,7 +17,7 @@
 
 #define LENGTH_OF_SERVER_LISTEN_QUEUE     10000
 #define NUM_WORKERS 20
-static std::vector<Multi_Thread_Worker> works(NUM_WORKERS);
+static std::vector<SingleThreadWorker> works(NUM_WORKERS);
 
 void Process(int);
 
