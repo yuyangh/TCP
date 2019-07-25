@@ -1,5 +1,6 @@
 
 #include "client.h"
+
 /*
 void *PrintHello(void *threadid) {
 	long tid;
