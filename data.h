@@ -26,9 +26,11 @@ public:
 	
 	Package(Slice key, Slice value) : key(key), value(value),
 	                                  id(0) {};
-	Package(unsigned int id,Slice key, Slice value) : key(key), value(value),id(id) {};
+	
+	Package(unsigned int id, Slice key, Slice value) : key(key), value(value), id(id) {};
 	
 	Package() : id(0) {};
+	
 	Package(unsigned int id) : id(id) {};
 };
 
@@ -45,7 +47,10 @@ public:
 struct ProcessStatus {
 	bool ready_to_receive_;
 	bool ready_to_send_;
-	ProcessStatus():ready_to_receive_(true),ready_to_send_(true){};
-	ProcessStatus(bool receive, bool send):ready_to_receive_(receive),ready_to_send_(send){};
+	
+	ProcessStatus() : ready_to_receive_(true), ready_to_send_(true) {};
+	
+	ProcessStatus(bool receive, bool send) : ready_to_receive_(receive), ready_to_send_(send) {};
 };
+
 #endif //TCPEXAMPLE_DATA_H
