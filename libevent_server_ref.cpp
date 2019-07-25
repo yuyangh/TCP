@@ -17,15 +17,8 @@ g++ -Wall -g  event-server.c -o server -levent -lpthread
 #include "event.h"
 #include <stdlib.h>
 #include <pthread.h>
-#include <event2/event.h>
-#include <event2/bufferevent.h>
-#include <event2/thread.h>
-#include <event2/util.h>
-#include <event2/buffer.h>
-#include <event2/listener.h>
 #include <fcntl.h>
 #include "data.h"
-#include "ring_buffer.hpp"
 
 #define ERR_EXIT(m) \
         do\
@@ -63,6 +56,7 @@ void send_fd(int sock_fd, int send_fd) {
 	ret = sendmsg(sock_fd, &msg, 0);
 	if (ret != 1)
 		ERR_EXIT("sendmsg");
+	close(send_fd);
 }
 
 int recv_fd(const int sock_fd) {
@@ -118,14 +112,14 @@ typedef struct {
 } DISPATCHER_THREAD;
 
 
-const int thread_num = 20;
+static const int NUM_WORKERS = 20;
 
 static LIBEVENT_THREAD *threads;
 static DISPATCHER_THREAD dispatcher_thread;
 int last_thread = 0;
 //-------------------------------------------------
 
-unsigned short nPort = SERVER_PORT;
+static unsigned short PORT_NUMBER = SERVER_PORT;
 struct event_base *pEventMgr = NULL;
 
 void Reader(int sock, short event, void *arg) {
@@ -153,14 +147,15 @@ void Reader(int sock, short event, void *arg) {
 	int ret = recv(sock, recv_package_buffer, PACKAGE_BUFFER_SIZE, 0);
 	if (ret <= 0) {
 #ifdef DEBUG_OUTPUT
-		printf("close connection from fd: %d \n", epollEventFD);
+		printf("close connection from fd: %d \n", sock);
 #endif
-		
+		// todo may need optimize
+		close(sock);
 		return;
 	} else {
 		memcpy(&package_buffer, recv_package_buffer, sizeof(Package));
 #ifdef DEBUG_OUTPUT
-		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", epollEventFD, (unsigned int) package_buffer.id,
+		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", sock, (unsigned int) package_buffer.id,
 			   package_buffer.key.id, package_buffer.value.id);
 #endif
 	}
@@ -168,20 +163,16 @@ void Reader(int sock, short event, void *arg) {
 	///////////////////////////////////////////////////////
 	
 	// send the response
-#ifdef DEBUG_OUTPUT
-	printf("Read ClientInfoArr: fd: %d, value:%d \n", epollEventFD,
-		   ClientInfoArr[epollEventFD].value.id);
-#endif
 	
 	// Result result(ClientInfoArr[epollEventFD].value.id);
-	Result result(0);
+	Result result(package_buffer.value.id);
 	int sendbytes = send(sock, (char *) &result, sizeof(Result), 0);
 	if (sendbytes < 0) {
 		perror("send failed.\n");
 		return;
 	}
 #ifdef DEBUG_OUTPUT
-	printf("fd: %d \t send the Result, id:%d\n", epollEventFD, result.id);
+	printf("fd: %d \t send the Result, id:%d\n", sock, result.id);
 #endif
 
 }
@@ -223,7 +214,6 @@ void ListenAccept(int sock, short event, void *arg) {
 	struct sockaddr_in ClientAddr;
 	int nClientSocket = -1;
 	socklen_t ClientLen = sizeof(ClientAddr);
-	
 	nClientSocket = accept(sock, (struct sockaddr *) &ClientAddr, &ClientLen);
 #ifdef DEBUG_OUTPUT
 	printf("---------------------------%d\n", nClientSocket);
@@ -237,7 +227,7 @@ void ListenAccept(int sock, short event, void *arg) {
 #endif
 	
 	//进行数据分发
-	int tid = (last_thread + 1) % thread_num;        //memcached中线程负载均衡算法
+	int tid = (last_thread + 1) % NUM_WORKERS;        //memcached中线程负载均衡算法
 	LIBEVENT_THREAD *thread = threads + tid;
 	last_thread = tid;
 	send_fd(thread->write_fd, nClientSocket);
@@ -246,31 +236,29 @@ void ListenAccept(int sock, short event, void *arg) {
 }
 
 
-int main(int argc, char** argv) {
-	printf("start %s \n", argv[0]);
-	int server_fd = -1;
+int main() {
+	
+	int nSocket = -1;
 	int nRet = -1;
 	
-	server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (-1 == server_fd) //
+	nSocket = socket(PF_INET, SOCK_STREAM, 0);
+	if (-1 == nSocket) //
 	{
 		printf("socket error:%s\n", strerror(errno));
 		return -1;
 	}
 	
 	int value = 1;
-	evutil_make_listen_socket_reuseable(server_fd);
-	// setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+	setsockopt(nSocket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
 	
 	
-	struct sockaddr_in server_addr;
-	bzero(&server_addr, sizeof(server_addr));
-	server_addr.sin_family = PF_INET;
-	server_addr.sin_port = htons(nPort);
-	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	struct sockaddr_in ServerAddr;
+	ServerAddr.sin_family = PF_INET;
+	ServerAddr.sin_port = htons(PORT_NUMBER);
+	ServerAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	
-	nRet = bind(server_fd, (struct sockaddr *) &server_addr, (socklen_t)
-	sizeof(server_addr));
+	nRet = bind(nSocket, (struct sockaddr *) &ServerAddr, (socklen_t)
+	sizeof(ServerAddr));
 	if (-1 == nRet) {
 		printf("bind error:%s\n", strerror(errno));
 		return -1;
@@ -278,7 +266,7 @@ int main(int argc, char** argv) {
 	
 	
 	//int listen(int sockfd, int backlog);
-	nRet = listen(server_fd, 100);
+	nRet = listen(nSocket, 100);
 	if (-1 == nRet) {
 		printf("listen error:%s\n", strerror(errno));
 		return -1;
@@ -306,20 +294,18 @@ int main(int argc, char** argv) {
 	}
 	dispatcher_thread.tid = pthread_self();
 	
-	threads = (LIBEVENT_THREAD *) calloc(thread_num, sizeof(LIBEVENT_THREAD));
+	threads = (LIBEVENT_THREAD *) calloc(NUM_WORKERS, sizeof(LIBEVENT_THREAD));
 	if (threads == NULL) {
 		perror("calloc");
 		return 1;
 	}
 	
-	for (i = 0; i < thread_num; i++) {
+	for (i = 0; i < NUM_WORKERS; i++) {
 		/* Create two new sockets, of type TYPE in domain DOMAIN and using
 		   protocol PROTOCOL, which are connected to each other, and put file
 		   descriptors for them in FDS[0] and FDS[1].  If PROTOCOL is zero,
 		   one will be chosen automatically.  Returns 0 on success, -1 for errors.  */
-		ret = socketpair(AF_LOCAL, SOCK_STREAM, 0, fd);
-		
-		if (ret == -1) {
+		if (socketpair(AF_LOCAL, SOCK_STREAM, 0, fd) < 0) {
 			perror("socketpair()");
 			return 1;
 		}
@@ -327,7 +313,7 @@ int main(int argc, char** argv) {
 		threads[i].read_fd = fd[1];
 		threads[i].write_fd = fd[0];
 		
-		threads[i].base = event_init();
+		threads[i].base = event_base_new();
 		if (threads[i].base == NULL) {
 			perror("event_init()");
 			return 1;
@@ -343,7 +329,7 @@ int main(int argc, char** argv) {
 		}
 	}
 	
-	for (i = 0; i < thread_num; i++) {
+	for (i = 0; i < NUM_WORKERS; i++) {
 		pthread_create(&tid, NULL, worker_thread, &threads[i]);
 	}
 	
@@ -353,7 +339,7 @@ int main(int argc, char** argv) {
 	
 	//3, 把事件，套接字，libevent的管理器给管理起来， 也叫注册
 	//int event_assign(struct event *, struct event_base *, evutil_socket_t, short, event_callback_fn, void *);
-	if (-1 == event_assign(&ListenEvent, dispatcher_thread.base, server_fd,
+	if (-1 == event_assign(&ListenEvent, dispatcher_thread.base, nSocket,
 	                       EV_READ | EV_PERSIST, ListenAccept, NULL)) {
 		printf("event_assign error:%s\n", strerror(errno));
 		return -1;
