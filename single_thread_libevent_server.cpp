@@ -54,6 +54,7 @@ void write_cb(struct bufferevent *bufev, void *arg);
 
 int main(int argc, char *argv[]) {
 	printf("start %s \n", argv[0]);
+	
 	int ret;
 	evutil_socket_t server_fd;
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);// fd being listened
@@ -150,7 +151,6 @@ void do_accept_cb(evutil_socket_t server_fd, short event, void *arg) {
 	
 	/**
 	  Changes the callbacks for a bufferevent.
-	
 	  @param bufev the bufferevent object for which to change callbacks
 	  @param readcb callback to invoke when there is data to be read, or NULL if
 		 no callback is desired
@@ -166,7 +166,6 @@ void do_accept_cb(evutil_socket_t server_fd, short event, void *arg) {
 	
 	/**
 	  Enable a bufferevent.
-	
 	  @param bufev the bufferevent to be enabled
 	  @param event any combination of EV_READ | EV_WRITE.
 	  @return 0 if successful, or -1 if an error occurred
@@ -174,7 +173,6 @@ void do_accept_cb(evutil_socket_t server_fd, short event, void *arg) {
  	*/
 	/**
 	* Persistent event: won't get removed automatically when activated.
-	*
 	* When a persistent event with a timeout becomes activated, its timeout
 	* is reset to 0.
 	*/
@@ -203,7 +201,7 @@ void read_cb(struct bufferevent *bufev, void *arg) {
 	  @return the amount of data read, in bytes.
 	 */
 	n = bufferevent_read(bufev, recv_package_buffer, sizeof(Package));
-	// todo debug output
+	
 #ifdef DEBUG_OUTPUT
 	printf("size read:\t%d, sizeof(Package):\t%d \n",n,(int)sizeof(Package));
 #endif
