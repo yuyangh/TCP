@@ -111,43 +111,95 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named epoll_server
+# Target rules for targets named epoll_server_example
 
 # Build rule for target.
-epoll_server: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 epoll_server
-.PHONY : epoll_server
+epoll_server_example: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 epoll_server_example
+.PHONY : epoll_server_example
 
 # fast build rule for target.
-epoll_server/fast:
-	$(MAKE) -f CMakeFiles/epoll_server.dir/build.make CMakeFiles/epoll_server.dir/build
-.PHONY : epoll_server/fast
+epoll_server_example/fast:
+	$(MAKE) -f CMakeFiles/epoll_server_example.dir/build.make CMakeFiles/epoll_server_example.dir/build
+.PHONY : epoll_server_example/fast
 
 #=============================================================================
-# Target rules for targets named server
+# Target rules for targets named single_client
 
 # Build rule for target.
-server: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 server
-.PHONY : server
+single_client: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 single_client
+.PHONY : single_client
 
 # fast build rule for target.
-server/fast:
-	$(MAKE) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/build
-.PHONY : server/fast
+single_client/fast:
+	$(MAKE) -f CMakeFiles/single_client.dir/build.make CMakeFiles/single_client.dir/build
+.PHONY : single_client/fast
 
 #=============================================================================
-# Target rules for targets named client
+# Target rules for targets named single_queue_epoll_server
 
 # Build rule for target.
-client: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 client
-.PHONY : client
+single_queue_epoll_server: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 single_queue_epoll_server
+.PHONY : single_queue_epoll_server
 
 # fast build rule for target.
-client/fast:
-	$(MAKE) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/build
-.PHONY : client/fast
+single_queue_epoll_server/fast:
+	$(MAKE) -f CMakeFiles/single_queue_epoll_server.dir/build.make CMakeFiles/single_queue_epoll_server.dir/build
+.PHONY : single_queue_epoll_server/fast
+
+#=============================================================================
+# Target rules for targets named single_thread_libevent_server
+
+# Build rule for target.
+single_thread_libevent_server: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 single_thread_libevent_server
+.PHONY : single_thread_libevent_server
+
+# fast build rule for target.
+single_thread_libevent_server/fast:
+	$(MAKE) -f CMakeFiles/single_thread_libevent_server.dir/build.make CMakeFiles/single_thread_libevent_server.dir/build
+.PHONY : single_thread_libevent_server/fast
+
+#=============================================================================
+# Target rules for targets named multi_thread_libevent_server
+
+# Build rule for target.
+multi_thread_libevent_server: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 multi_thread_libevent_server
+.PHONY : multi_thread_libevent_server
+
+# fast build rule for target.
+multi_thread_libevent_server/fast:
+	$(MAKE) -f CMakeFiles/multi_thread_libevent_server.dir/build.make CMakeFiles/multi_thread_libevent_server.dir/build
+.PHONY : multi_thread_libevent_server/fast
+
+#=============================================================================
+# Target rules for targets named basic_server
+
+# Build rule for target.
+basic_server: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 basic_server
+.PHONY : basic_server
+
+# fast build rule for target.
+basic_server/fast:
+	$(MAKE) -f CMakeFiles/basic_server.dir/build.make CMakeFiles/basic_server.dir/build
+.PHONY : basic_server/fast
+
+#=============================================================================
+# Target rules for targets named libevent_server_ref
+
+# Build rule for target.
+libevent_server_ref: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 libevent_server_ref
+.PHONY : libevent_server_ref
+
+# fast build rule for target.
+libevent_server_ref/fast:
+	$(MAKE) -f CMakeFiles/libevent_server_ref.dir/build.make CMakeFiles/libevent_server_ref.dir/build
+.PHONY : libevent_server_ref/fast
 
 #=============================================================================
 # Target rules for targets named client_pool
@@ -163,44 +215,57 @@ client_pool/fast:
 .PHONY : client_pool/fast
 
 #=============================================================================
-# Target rules for targets named epoll_server_example
+# Target rules for targets named multi_queue_epoll_server
 
 # Build rule for target.
-epoll_server_example: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 epoll_server_example
-.PHONY : epoll_server_example
+multi_queue_epoll_server: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 multi_queue_epoll_server
+.PHONY : multi_queue_epoll_server
 
 # fast build rule for target.
-epoll_server_example/fast:
-	$(MAKE) -f CMakeFiles/epoll_server_example.dir/build.make CMakeFiles/epoll_server_example.dir/build
-.PHONY : epoll_server_example/fast
+multi_queue_epoll_server/fast:
+	$(MAKE) -f CMakeFiles/multi_queue_epoll_server.dir/build.make CMakeFiles/multi_queue_epoll_server.dir/build
+.PHONY : multi_queue_epoll_server/fast
 
-client.o: client.cpp.o
+#=============================================================================
+# Target rules for targets named libevent_multi_worker
 
-.PHONY : client.o
+# Build rule for target.
+libevent_multi_worker: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 libevent_multi_worker
+.PHONY : libevent_multi_worker
+
+# fast build rule for target.
+libevent_multi_worker/fast:
+	$(MAKE) -f CMakeFiles/libevent_multi_worker.dir/build.make CMakeFiles/libevent_multi_worker.dir/build
+.PHONY : libevent_multi_worker/fast
+
+basic_server.o: basic_server.cpp.o
+
+.PHONY : basic_server.o
 
 # target to build an object file
-client.cpp.o:
-	$(MAKE) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/client.cpp.o
-.PHONY : client.cpp.o
+basic_server.cpp.o:
+	$(MAKE) -f CMakeFiles/basic_server.dir/build.make CMakeFiles/basic_server.dir/basic_server.cpp.o
+.PHONY : basic_server.cpp.o
 
-client.i: client.cpp.i
+basic_server.i: basic_server.cpp.i
 
-.PHONY : client.i
+.PHONY : basic_server.i
 
 # target to preprocess a source file
-client.cpp.i:
-	$(MAKE) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/client.cpp.i
-.PHONY : client.cpp.i
+basic_server.cpp.i:
+	$(MAKE) -f CMakeFiles/basic_server.dir/build.make CMakeFiles/basic_server.dir/basic_server.cpp.i
+.PHONY : basic_server.cpp.i
 
-client.s: client.cpp.s
+basic_server.s: basic_server.cpp.s
 
-.PHONY : client.s
+.PHONY : basic_server.s
 
 # target to generate assembly for a file
-client.cpp.s:
-	$(MAKE) -f CMakeFiles/client.dir/build.make CMakeFiles/client.dir/client.cpp.s
-.PHONY : client.cpp.s
+basic_server.cpp.s:
+	$(MAKE) -f CMakeFiles/basic_server.dir/build.make CMakeFiles/basic_server.dir/basic_server.cpp.s
+.PHONY : basic_server.cpp.s
 
 client_pool.o: client_pool.cpp.o
 
@@ -229,33 +294,6 @@ client_pool.cpp.s:
 	$(MAKE) -f CMakeFiles/client_pool.dir/build.make CMakeFiles/client_pool.dir/client_pool.cpp.s
 .PHONY : client_pool.cpp.s
 
-epoll_server.o: epoll_server.cpp.o
-
-.PHONY : epoll_server.o
-
-# target to build an object file
-epoll_server.cpp.o:
-	$(MAKE) -f CMakeFiles/epoll_server.dir/build.make CMakeFiles/epoll_server.dir/epoll_server.cpp.o
-.PHONY : epoll_server.cpp.o
-
-epoll_server.i: epoll_server.cpp.i
-
-.PHONY : epoll_server.i
-
-# target to preprocess a source file
-epoll_server.cpp.i:
-	$(MAKE) -f CMakeFiles/epoll_server.dir/build.make CMakeFiles/epoll_server.dir/epoll_server.cpp.i
-.PHONY : epoll_server.cpp.i
-
-epoll_server.s: epoll_server.cpp.s
-
-.PHONY : epoll_server.s
-
-# target to generate assembly for a file
-epoll_server.cpp.s:
-	$(MAKE) -f CMakeFiles/epoll_server.dir/build.make CMakeFiles/epoll_server.dir/epoll_server.cpp.s
-.PHONY : epoll_server.cpp.s
-
 epoll_server_example.o: epoll_server_example.cpp.o
 
 .PHONY : epoll_server_example.o
@@ -283,32 +321,194 @@ epoll_server_example.cpp.s:
 	$(MAKE) -f CMakeFiles/epoll_server_example.dir/build.make CMakeFiles/epoll_server_example.dir/epoll_server_example.cpp.s
 .PHONY : epoll_server_example.cpp.s
 
-server.o: server.cpp.o
+libevent_multi_worker.o: libevent_multi_worker.cpp.o
 
-.PHONY : server.o
+.PHONY : libevent_multi_worker.o
 
 # target to build an object file
-server.cpp.o:
-	$(MAKE) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/server.cpp.o
-.PHONY : server.cpp.o
+libevent_multi_worker.cpp.o:
+	$(MAKE) -f CMakeFiles/libevent_multi_worker.dir/build.make CMakeFiles/libevent_multi_worker.dir/libevent_multi_worker.cpp.o
+.PHONY : libevent_multi_worker.cpp.o
 
-server.i: server.cpp.i
+libevent_multi_worker.i: libevent_multi_worker.cpp.i
 
-.PHONY : server.i
+.PHONY : libevent_multi_worker.i
 
 # target to preprocess a source file
-server.cpp.i:
-	$(MAKE) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/server.cpp.i
-.PHONY : server.cpp.i
+libevent_multi_worker.cpp.i:
+	$(MAKE) -f CMakeFiles/libevent_multi_worker.dir/build.make CMakeFiles/libevent_multi_worker.dir/libevent_multi_worker.cpp.i
+.PHONY : libevent_multi_worker.cpp.i
 
-server.s: server.cpp.s
+libevent_multi_worker.s: libevent_multi_worker.cpp.s
 
-.PHONY : server.s
+.PHONY : libevent_multi_worker.s
 
 # target to generate assembly for a file
-server.cpp.s:
-	$(MAKE) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/server.cpp.s
-.PHONY : server.cpp.s
+libevent_multi_worker.cpp.s:
+	$(MAKE) -f CMakeFiles/libevent_multi_worker.dir/build.make CMakeFiles/libevent_multi_worker.dir/libevent_multi_worker.cpp.s
+.PHONY : libevent_multi_worker.cpp.s
+
+libevent_server_ref.o: libevent_server_ref.cpp.o
+
+.PHONY : libevent_server_ref.o
+
+# target to build an object file
+libevent_server_ref.cpp.o:
+	$(MAKE) -f CMakeFiles/libevent_server_ref.dir/build.make CMakeFiles/libevent_server_ref.dir/libevent_server_ref.cpp.o
+.PHONY : libevent_server_ref.cpp.o
+
+libevent_server_ref.i: libevent_server_ref.cpp.i
+
+.PHONY : libevent_server_ref.i
+
+# target to preprocess a source file
+libevent_server_ref.cpp.i:
+	$(MAKE) -f CMakeFiles/libevent_server_ref.dir/build.make CMakeFiles/libevent_server_ref.dir/libevent_server_ref.cpp.i
+.PHONY : libevent_server_ref.cpp.i
+
+libevent_server_ref.s: libevent_server_ref.cpp.s
+
+.PHONY : libevent_server_ref.s
+
+# target to generate assembly for a file
+libevent_server_ref.cpp.s:
+	$(MAKE) -f CMakeFiles/libevent_server_ref.dir/build.make CMakeFiles/libevent_server_ref.dir/libevent_server_ref.cpp.s
+.PHONY : libevent_server_ref.cpp.s
+
+multi_queue_epoll_server.o: multi_queue_epoll_server.cpp.o
+
+.PHONY : multi_queue_epoll_server.o
+
+# target to build an object file
+multi_queue_epoll_server.cpp.o:
+	$(MAKE) -f CMakeFiles/multi_queue_epoll_server.dir/build.make CMakeFiles/multi_queue_epoll_server.dir/multi_queue_epoll_server.cpp.o
+.PHONY : multi_queue_epoll_server.cpp.o
+
+multi_queue_epoll_server.i: multi_queue_epoll_server.cpp.i
+
+.PHONY : multi_queue_epoll_server.i
+
+# target to preprocess a source file
+multi_queue_epoll_server.cpp.i:
+	$(MAKE) -f CMakeFiles/multi_queue_epoll_server.dir/build.make CMakeFiles/multi_queue_epoll_server.dir/multi_queue_epoll_server.cpp.i
+.PHONY : multi_queue_epoll_server.cpp.i
+
+multi_queue_epoll_server.s: multi_queue_epoll_server.cpp.s
+
+.PHONY : multi_queue_epoll_server.s
+
+# target to generate assembly for a file
+multi_queue_epoll_server.cpp.s:
+	$(MAKE) -f CMakeFiles/multi_queue_epoll_server.dir/build.make CMakeFiles/multi_queue_epoll_server.dir/multi_queue_epoll_server.cpp.s
+.PHONY : multi_queue_epoll_server.cpp.s
+
+multi_thread_libevent_server.o: multi_thread_libevent_server.cpp.o
+
+.PHONY : multi_thread_libevent_server.o
+
+# target to build an object file
+multi_thread_libevent_server.cpp.o:
+	$(MAKE) -f CMakeFiles/multi_thread_libevent_server.dir/build.make CMakeFiles/multi_thread_libevent_server.dir/multi_thread_libevent_server.cpp.o
+.PHONY : multi_thread_libevent_server.cpp.o
+
+multi_thread_libevent_server.i: multi_thread_libevent_server.cpp.i
+
+.PHONY : multi_thread_libevent_server.i
+
+# target to preprocess a source file
+multi_thread_libevent_server.cpp.i:
+	$(MAKE) -f CMakeFiles/multi_thread_libevent_server.dir/build.make CMakeFiles/multi_thread_libevent_server.dir/multi_thread_libevent_server.cpp.i
+.PHONY : multi_thread_libevent_server.cpp.i
+
+multi_thread_libevent_server.s: multi_thread_libevent_server.cpp.s
+
+.PHONY : multi_thread_libevent_server.s
+
+# target to generate assembly for a file
+multi_thread_libevent_server.cpp.s:
+	$(MAKE) -f CMakeFiles/multi_thread_libevent_server.dir/build.make CMakeFiles/multi_thread_libevent_server.dir/multi_thread_libevent_server.cpp.s
+.PHONY : multi_thread_libevent_server.cpp.s
+
+single_client.o: single_client.cpp.o
+
+.PHONY : single_client.o
+
+# target to build an object file
+single_client.cpp.o:
+	$(MAKE) -f CMakeFiles/single_client.dir/build.make CMakeFiles/single_client.dir/single_client.cpp.o
+.PHONY : single_client.cpp.o
+
+single_client.i: single_client.cpp.i
+
+.PHONY : single_client.i
+
+# target to preprocess a source file
+single_client.cpp.i:
+	$(MAKE) -f CMakeFiles/single_client.dir/build.make CMakeFiles/single_client.dir/single_client.cpp.i
+.PHONY : single_client.cpp.i
+
+single_client.s: single_client.cpp.s
+
+.PHONY : single_client.s
+
+# target to generate assembly for a file
+single_client.cpp.s:
+	$(MAKE) -f CMakeFiles/single_client.dir/build.make CMakeFiles/single_client.dir/single_client.cpp.s
+.PHONY : single_client.cpp.s
+
+single_queue_epoll_server.o: single_queue_epoll_server.cpp.o
+
+.PHONY : single_queue_epoll_server.o
+
+# target to build an object file
+single_queue_epoll_server.cpp.o:
+	$(MAKE) -f CMakeFiles/single_queue_epoll_server.dir/build.make CMakeFiles/single_queue_epoll_server.dir/single_queue_epoll_server.cpp.o
+.PHONY : single_queue_epoll_server.cpp.o
+
+single_queue_epoll_server.i: single_queue_epoll_server.cpp.i
+
+.PHONY : single_queue_epoll_server.i
+
+# target to preprocess a source file
+single_queue_epoll_server.cpp.i:
+	$(MAKE) -f CMakeFiles/single_queue_epoll_server.dir/build.make CMakeFiles/single_queue_epoll_server.dir/single_queue_epoll_server.cpp.i
+.PHONY : single_queue_epoll_server.cpp.i
+
+single_queue_epoll_server.s: single_queue_epoll_server.cpp.s
+
+.PHONY : single_queue_epoll_server.s
+
+# target to generate assembly for a file
+single_queue_epoll_server.cpp.s:
+	$(MAKE) -f CMakeFiles/single_queue_epoll_server.dir/build.make CMakeFiles/single_queue_epoll_server.dir/single_queue_epoll_server.cpp.s
+.PHONY : single_queue_epoll_server.cpp.s
+
+single_thread_libevent_server.o: single_thread_libevent_server.cpp.o
+
+.PHONY : single_thread_libevent_server.o
+
+# target to build an object file
+single_thread_libevent_server.cpp.o:
+	$(MAKE) -f CMakeFiles/single_thread_libevent_server.dir/build.make CMakeFiles/single_thread_libevent_server.dir/single_thread_libevent_server.cpp.o
+.PHONY : single_thread_libevent_server.cpp.o
+
+single_thread_libevent_server.i: single_thread_libevent_server.cpp.i
+
+.PHONY : single_thread_libevent_server.i
+
+# target to preprocess a source file
+single_thread_libevent_server.cpp.i:
+	$(MAKE) -f CMakeFiles/single_thread_libevent_server.dir/build.make CMakeFiles/single_thread_libevent_server.dir/single_thread_libevent_server.cpp.i
+.PHONY : single_thread_libevent_server.cpp.i
+
+single_thread_libevent_server.s: single_thread_libevent_server.cpp.s
+
+.PHONY : single_thread_libevent_server.s
+
+# target to generate assembly for a file
+single_thread_libevent_server.cpp.s:
+	$(MAKE) -f CMakeFiles/single_thread_libevent_server.dir/build.make CMakeFiles/single_thread_libevent_server.dir/single_thread_libevent_server.cpp.s
+.PHONY : single_thread_libevent_server.cpp.s
 
 # Help Target
 help:
@@ -317,27 +517,47 @@ help:
 	@echo "... clean"
 	@echo "... depend"
 	@echo "... rebuild_cache"
-	@echo "... epoll_server"
-	@echo "... edit_cache"
-	@echo "... server"
-	@echo "... client"
-	@echo "... client_pool"
 	@echo "... epoll_server_example"
-	@echo "... client.o"
-	@echo "... client.i"
-	@echo "... client.s"
+	@echo "... single_client"
+	@echo "... single_queue_epoll_server"
+	@echo "... edit_cache"
+	@echo "... single_thread_libevent_server"
+	@echo "... multi_thread_libevent_server"
+	@echo "... basic_server"
+	@echo "... libevent_server_ref"
+	@echo "... client_pool"
+	@echo "... multi_queue_epoll_server"
+	@echo "... libevent_multi_worker"
+	@echo "... basic_server.o"
+	@echo "... basic_server.i"
+	@echo "... basic_server.s"
 	@echo "... client_pool.o"
 	@echo "... client_pool.i"
 	@echo "... client_pool.s"
-	@echo "... epoll_server.o"
-	@echo "... epoll_server.i"
-	@echo "... epoll_server.s"
 	@echo "... epoll_server_example.o"
 	@echo "... epoll_server_example.i"
 	@echo "... epoll_server_example.s"
-	@echo "... server.o"
-	@echo "... server.i"
-	@echo "... server.s"
+	@echo "... libevent_multi_worker.o"
+	@echo "... libevent_multi_worker.i"
+	@echo "... libevent_multi_worker.s"
+	@echo "... libevent_server_ref.o"
+	@echo "... libevent_server_ref.i"
+	@echo "... libevent_server_ref.s"
+	@echo "... multi_queue_epoll_server.o"
+	@echo "... multi_queue_epoll_server.i"
+	@echo "... multi_queue_epoll_server.s"
+	@echo "... multi_thread_libevent_server.o"
+	@echo "... multi_thread_libevent_server.i"
+	@echo "... multi_thread_libevent_server.s"
+	@echo "... single_client.o"
+	@echo "... single_client.i"
+	@echo "... single_client.s"
+	@echo "... single_queue_epoll_server.o"
+	@echo "... single_queue_epoll_server.i"
+	@echo "... single_queue_epoll_server.s"
+	@echo "... single_thread_libevent_server.o"
+	@echo "... single_thread_libevent_server.i"
+	@echo "... single_thread_libevent_server.s"
 .PHONY : help
 
 

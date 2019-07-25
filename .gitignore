@@ -5,7 +5,9 @@ cmake-build-debug/
 
 .o
 
-client
+result.txt
+
+"client"
 
 client_pool
 
