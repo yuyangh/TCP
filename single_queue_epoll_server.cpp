@@ -27,13 +27,18 @@
 
 using namespace std;
 
+/*-------------------------------------------------
+ * global variables
+ * -------------------------------------------------
+ */
 static const int NUM_WORKERS = 20;
 static const int ECHO_SERVER_PORT = 6000;
 static const int NUM_FD = 1200;
 static const int LISTEN_BACKLOG = 16;
-static const int MAX_EPOLL_EVENT_COUNT = (NUM_FD >> 2);
+static const int MAX_EVENT_COUNT = (NUM_FD >> 2);
 static const int EPOLL_WAIT_TIMEOUT = 0;
 static const size_t MAX_QUEUE_SIZE = NUM_FD;
+static int PORT_NUMBER = SERVER_PORT;
 
 static int epoll_fd, server_fd;
 static volatile bool RUNNING_FLAG = true;
@@ -45,10 +50,11 @@ static unsigned long long JobCount = 0;
 static Package ClientInfoArr[NUM_FD];
 static ProcessStatus FDProcessStatusArr[NUM_FD];
 // only 1 shared ring buffer
-static CarpLog::RingBuffer<struct epoll_event> EpollEventRingBuffer(MAX_QUEUE_SIZE);
+static RingBuffer<struct epoll_event, true, true> EpollEventRingBuffer(MAX_QUEUE_SIZE);
 
-/*
+/*-------------------------------------------------
  * function prototypes
+ * -------------------------------------------------
  */
 void process(struct epoll_event *epollEvent);
 
@@ -106,11 +112,11 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 	assert(!FDProcessStatusArr[epollEventFD].ready_to_receive_);
 	
 	// receive the Package from the client
-	Package buffer;
-	char recvPackage[PACKAGE_BUFFER_SIZE];
-	// Package buffer;
-	memset(&buffer, 0, sizeof(Package)); // clean to 0
-	int ret = recv(epollEventFD, recvPackage, PACKAGE_BUFFER_SIZE, 0);
+	Package package_buffer;
+	char recv_package_buffer[PACKAGE_BUFFER_SIZE];
+	// Package package_buffer;
+	memset(&package_buffer, 0, sizeof(Package)); // clean to 0
+	int ret = recv(epollEventFD, recv_package_buffer, PACKAGE_BUFFER_SIZE, 0);
 	if (ret <= 0) {
 #ifdef DEBUG_OUTPUT
 		printf("close connection from fd: %d \n", epollEventFD);
@@ -126,10 +132,10 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 		FDProcessStatusArr[epollEventFD].ready_to_receive_ = true;
 		return;
 	} else {
-		memcpy(&buffer, recvPackage, sizeof(Package));
+		memcpy(&package_buffer, recv_package_buffer, sizeof(Package));
 #ifdef DEBUG_OUTPUT
-		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", epollEventFD, (unsigned int) buffer.id,
-			   buffer.key.id, buffer.value.id);
+		printf("fd: %d \t recv over id:%u, key:%d, value:%d\n", epollEventFD, (unsigned int) package_buffer.id,
+			   package_buffer.key.id, package_buffer.value.id);
 #endif
 	}
 
@@ -141,10 +147,10 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 #endif
 	
 	// store the received information
-	ClientInfoArr[epollEventFD] = (buffer);
+	ClientInfoArr[epollEventFD] = (package_buffer);
 
 #ifdef DEBUG_OUTPUT
-	printf("Store clientInfo: fd: %d, value:%d \n", epollEventFD, buffer.value.id);
+	printf("Store clientInfo: fd: %d, value:%d \n", epollEventFD, package_buffer.value.id);
 #endif
 	
 	epoll_ctl(epoll_fd, EPOLL_CTL_MOD, epollEventFD, epollEvent);
@@ -167,7 +173,7 @@ void SendResult(struct epoll_event *epollEvent) {
 #endif
 	
 	// Result result(ClientInfoArr[epollEventFD].value.id);
-	Result result(0);
+	Result result(ClientInfoArr[epollEventFD].value.id);
 	int sendbytes = send(epollEventFD, (char *) &result, sizeof(Result), 0);
 	if (sendbytes < 0) {
 		perror("send failed.\n");
@@ -262,31 +268,32 @@ void SetNonBlocking(int sock) {
 
 void ProgramTerminated() {
 	RUNNING_FLAG = false;
-	cout << "\n\nterminating the program..." << endl;
+	printf("JobCount:%llu\t\n", JobCount);
+	printf("\n\nterminating the program...\n\n");
 	close(epoll_fd);
 	close(server_fd);
 }
 
 
 int main(int argc, char *argv[]) {
-	printf("start single_queue_epoll_server.cpp\n");
+	printf("start %s \n", argv[0]);
 	
 	signal(SIGINT, sig_handler);
 	
-	int i, new_client_fd, nfds/*number of fd s*/, portnumber;
+	int i, new_client_fd, nfds/*number of fd s*/ ;
 	socklen_t length;
 	
-	if (argc >1) {
-		if ((portnumber = atoi(argv[1])) < 0) {
-			fprintf(stderr, "Usage:%s portnumber/a/n", argv[0]);
+	if (argc > 1) {
+		if ((PORT_NUMBER = atoi(argv[1])) < 0) {
+			fprintf(stderr, "Usage:%s PORT_NUMBER/a/n", argv[0]);
 			return 1;
 		}
 	} else {
-		portnumber = SERVER_PORT;
+		PORT_NUMBER = SERVER_PORT;
 	}
 	
 	// declere epoll_event event_array as an array to deal with callback events
-	struct epoll_event event_array[MAX_EPOLL_EVENT_COUNT];
+	struct epoll_event event_array[MAX_EVENT_COUNT];
 	
 	
 	// creat the epoll_fd to deal with accept
@@ -320,13 +327,14 @@ int main(int argc, char *argv[]) {
 	// descriptor epfd.  It requests that the operation op be performed for
 	// the target file descriptor, fd.
 	epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event);
+	
 	bzero(&server_addr, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = htons(INADDR_ANY);
-	server_addr.sin_port = htons(portnumber);
+	server_addr.sin_port = htons(PORT_NUMBER);
 	
-	bind(server_fd, (sockaddr * ) & server_addr, sizeof(server_addr));
-	listen(server_fd, MAX_EPOLL_EVENT_COUNT);
+	bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr));
+	listen(server_fd, MAX_EVENT_COUNT);
 	
 	
 	// initialize Workers thread to work
@@ -351,7 +359,7 @@ int main(int argc, char *argv[]) {
 		// the events that will be available for the caller.
 		// Up to maxevents are returned by epoll_wait().
 		// The maxevents argument must be greater than zero.
-		nfds = epoll_wait(epoll_fd, event_array, MAX_EPOLL_EVENT_COUNT, EPOLL_WAIT_TIMEOUT);
+		nfds = epoll_wait(epoll_fd, event_array, MAX_EVENT_COUNT, EPOLL_WAIT_TIMEOUT);
 		
 		// handle all happeing event_array
 #ifdef DEBUG_OUTPUT
@@ -363,18 +371,23 @@ int main(int argc, char *argv[]) {
 		
 		for (i = 0; i < nfds; ++i) {
 			
+			// todo debug code
+			if (JobCount == 20001000LL) {
+				printf("reach the JobCount\n");
+				exit(0);
+			}
+			
 			Package buffer;
 			// if detect a new client connect to the server's socket, 
 			// create a new connection
 			if (event_array[i].data.fd == server_fd) {
-				new_client_fd = accept(server_fd, (sockaddr * ) & client_addr, &length);
+				new_client_fd = accept(server_fd, (sockaddr *) &client_addr, &length);
 				
 				if (new_client_fd < 0) {
 #ifdef DEBUG_OUTPUT
 					// output client fd
 					cout << "Error, new_client_fd: " << new_client_fd << endl;
 #endif
-					perror("new_client_fd < 0");
 					exit(1);
 				}
 				SetNonBlocking(new_client_fd);
@@ -448,6 +461,8 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 		}
+		
+		
 	}
 	atexit(ProgramTerminated);
 	return 0;
