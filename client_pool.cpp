@@ -42,7 +42,8 @@ void thread_task(Client client, int key, int value) {
 }
 
 int main(int argc, char **argv) {
-	printf("start the client_pool.cpp\n");
+	printf("start %s \n", argv[0]);
+	
 	int serverPort = SERVER_PORT;
 	if (argc > 1) {
 		int serverPort = atoi(argv[1]);
