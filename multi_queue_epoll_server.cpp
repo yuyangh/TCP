@@ -26,7 +26,7 @@
 #include "mullti_thread_worker.h"
 
 using namespace std;
-#define NUM_WORKERS 			32
+#define NUM_WORKERS            32
 #define ECHO_SERVER_PORT        6000
 #define NUM_FD                  1200
 #define LISTEN_BACKLOG          16
@@ -34,7 +34,7 @@ using namespace std;
 #define EPOLL_WAIT_TIMEOUT      0
 
 
-static std::vector<Multi_Thread_Worker> works(NUM_WORKERS);
+static std::vector<MultiThreadWorker> works(NUM_WORKERS);
 static int epoll_fd, server_fd;
 static volatile bool running = true;
 // event for the server
@@ -43,6 +43,9 @@ static struct epoll_event event;
 static unsigned long long JobCount = 0;
 static unordered_map<int, Package> ClientInfoMap;
 static unordered_map<int, ProcessStatus> FDProcessStatus;
+
+// static Package ClientInfoArr[NUM_FD];
+// static ProcessStatus FDProcessStatusArr[NUM_FD];
 // todo may optimize unordered_map to array to accelerate
 // static ProcessStatus FDProcessStatusArr[NUM_FD];
 
@@ -57,6 +60,7 @@ void SendResult(struct epoll_event *epollEvent);
 
 void sig_handler(int sig) {
 	if (sig == SIGINT) {
+		printf("JobCount:%llu\t\n", JobCount);
 		ProgramTerminated();
 	}
 }
@@ -144,8 +148,8 @@ void ReceivePackage(struct epoll_event *epollEvent) {
 			   buffer.key.id, buffer.value.id);
 #endif
 	}
-	
-	
+
+
 #ifdef EDGE_TRIGGERED
 	epollEvent->events=EPOLLOUT | EPOLLET;
 #else
@@ -277,7 +281,8 @@ void ProgramTerminated() {
 
 
 int main(int argc, char *argv[]) {
-	printf("start multi_queue_epoll_server.cpp\n");
+	printf("start %s \n", argv[0]);
+	
 	signal(SIGINT, sig_handler);
 	ClientInfoMap.reserve(NUM_FD);
 	FDProcessStatus.reserve(NUM_FD);
@@ -288,7 +293,7 @@ int main(int argc, char *argv[]) {
 	
 	if (argc == 2) {
 		if ((portnumber = atoi(argv[1])) < 0) {
-			fprintf(stderr, "Usage:%s portnumber/a/n", argv[0]);
+			fprintf(stderr, "Usage:%s PORT_NUMBER/a/n", argv[0]);
 			return 1;
 		}
 	} else {
@@ -333,9 +338,9 @@ int main(int argc, char *argv[]) {
 	epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event);
 	bzero(&serveraddr, sizeof(serveraddr));
 	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_addr.s_addr = htons(INADDR_ANY);
-	// string local_addr = "127.0.0.1";
-	// inet_aton(local_addr.c_str(), &(serveraddr.sin_addr));
+	// serveraddr.sin_addr.s_addr = htons(INADDR_ANY);
+	string local_addr = "127.0.0.1";
+	inet_aton(local_addr.c_str(), &(serveraddr.sin_addr));
 	
 	serveraddr.sin_port = htons(portnumber);
 	bind(server_fd, (sockaddr * ) & serveraddr, sizeof(serveraddr));
@@ -369,6 +374,12 @@ int main(int argc, char *argv[]) {
 		}
 #endif
 		for (i = 0; i < nfds; ++i) {
+			
+			// todo debug code
+			if (JobCount == 20001000LL) {
+				printf("reach the JobCount\n");
+				exit(0);
+			}
 			
 			Package buffer;
 			//如果新监测到一个SOCKET用户连接到了绑定的SOCKET端口，建立新的连接。
@@ -580,6 +591,8 @@ int main(int argc, char *argv[]) {
 #endif
 			}
 		}
+		
+		
 	}
 	atexit(ProgramTerminated);
 	return 0;
