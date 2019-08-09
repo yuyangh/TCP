@@ -305,32 +305,28 @@ int main(int argc, char *argv[]) {
 		portnumber = SERVER_PORT;
 	}
 	
-	//声明epoll_event结构体的变量,ev用于注册事件,数组用于回传要处理的事件
-	
+	// the event_array is reponsible for active epoll event
 	struct epoll_event event_array[MAX_EPOLL_EVENT_COUNT];
-	//生成用于处理accept的epoll专用的文件描述符
 	
 	epoll_fd = epoll_create(NUM_FD);
-	struct sockaddr_in client_addr;// todo
+	struct sockaddr_in client_addr;
 	struct sockaddr_in serveraddr;
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	
-	//把socket设置为非阻塞方式
+	// set to non blocking
 	SetNonBlocking(server_fd);
 	
-	//设置与要处理的事件相关的文件描述符
+	// set fd
 	event.data.fd = server_fd;
-	//设置要处理的事件类型
 	
-	// todo EPOLLET : 开启边缘触发，默认的是水平触发
-	// we can adjust that 所以我们并未看到EPOLLLT
+	// in default, it is level triggered
 #ifdef EDGE_TRIGGERED
 	event.events = EPOLLIN | EPOLLET;
 #else
 	event.events = EPOLLIN;
 #endif
 	
-	//注册epoll事件
+	// register epoll event
 	// 1st: epoll_create()'s return value, 
 	// 2nd: add new fd into epoll_fd
 	// 3rd: fd needs to listen
@@ -359,7 +355,7 @@ int main(int argc, char *argv[]) {
 	int nfds_old = 0;
 	
 	while (running) {
-		//等待epoll事件的发生
+		// wait for epoll event to happen
 		// interface: int epoll_wait(int epoll_fd, struct epoll_event *event_array, int maxevents, int timeout);
 		
 		// The epoll_wait() system call waits for events on the epoll(7)
@@ -380,7 +376,6 @@ int main(int argc, char *argv[]) {
 		for (i = 0; i < nfds; ++i) {
 			
 			Package buffer;
-			//如果新监测到一个SOCKET用户连接到了绑定的SOCKET端口，建立新的连接。
 			// if detect a new client connect to the server's socket, 
 			// create a new connection
 			if (event_array[i].data.fd == server_fd) {
@@ -403,10 +398,10 @@ int main(int argc, char *argv[]) {
 				cout << "\tfd: " << new_client_fd << endl;
 #endif
 				
-				//设置用于读操作的文件描述符
+				// set the fd
 				event.data.fd = new_client_fd;
 				
-				//设置用于注测的读操作事件
+				// register event to be reading
 #ifdef EDGE_TRIGGERED
 				event.events = EPOLLIN | EPOLLET;
 #else
@@ -425,7 +420,7 @@ int main(int argc, char *argv[]) {
 				// add event
 				epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_client_fd, &event);
 			} else {
-#ifdef PARALLEL_SEND_AND_RECEIVE
+
 				if ((event_array[i].events & EPOLLIN)) {
 					if (FDProcessStatusArr[event_array[i].data.fd].ready_to_receive_) {
 						// go to receiving stage, so no longer in ready stage
@@ -453,141 +448,15 @@ int main(int argc, char *argv[]) {
 #endif
 					}
 				}
-				
-				// todo debug code
+
+#ifdef PROFILING
 				if (JobCount == JobCountLimit) {
-					printf("reach the JobCount\n");
-					exit(0);
-				}
+				printf("reach the JobCount\n");
+				cout<<"ratio:"<<1.0*smallNFDS/totalNFDS<<endl;
+				exit(0);
+			}
 #endif
 
-#ifndef PARALLEL_SEND_AND_RECEIVE
-#ifndef SEND_RECEIVE_SEPARATE
-				// receive and send together
-				
-				// receive the Package from the client
-				char recvPackage[PACKAGE_BUFFER_SIZE];
-				// Package buffer;
-				memset(&buffer, 0, sizeof(Package)); // clean to 0
-				int ret = recv(event_array[i].data.fd, recvPackage, PACKAGE_BUFFER_SIZE, 0);
-				if (ret <= 0) {
-#ifdef DEBUG_OUTPUT
-					printf("close connection from fd: %d \n", event_array[i].data.fd);
-#endif
-					close(event_array[i].data.fd);
-					epoll_ctl(epoll_fd, EPOLL_CTL_DEL, event_array[i].data.fd, &event);
-					continue;
-				}
-				memcpy(&buffer, recvPackage, sizeof(Package));
-				packages[i] = (buffer);// may use std::move
-#ifdef DEBUG_OUTPUT
-				printf("recv over id:%u, key:%d, value:%d\n", (unsigned int) buffer.id, buffer.key.id, buffer.value.id);
-#endif
-				
-				Result result(packages[i].id);
-				int sendbytes = send(event_array[i].data.fd, (char *) &result, sizeof(Result), 0);
-				if (sendbytes < 0) {
-					perror("send failed.\n");
-					continue;
-				}
-#ifdef DEBUG_OUTPUT
-				printf("send the Result, id:%d\n", result.id);
-#endif
-#endif
-
-#ifdef SEND_RECEIVE_SEPARATE
-				
-				//如果是已经连接的用户，并且收到数据，那么进行读入。
-				if (event_array[i].events & EPOLLIN) {
-#ifdef DEBUG_OUTPUT
-					cout << "EPOLLIN" << endl;
-#endif
-					if ((sockfd = event_array[i].data.fd) < 0) {
-#ifdef DEBUG_OUTPUT
-						cout << "sockfd<0" << endl;
-#endif
-						continue;
-					}
-					// if ((n = read(sockfd, line, MAXLINE)) < 0) {
-					// 	if (errno == ECONNRESET) {
-					// 		close(sockfd);
-					// 		event_array[i].data.fd = -1;
-					// 	} else
-					// 		std::cout << "readline error" << std::endl;
-					// } else if (n == 0) {
-					// 	close(sockfd);
-					// 	event_array[i].data.fd = -1;
-					// }
-					
-					// receive the Package from the client
-					char recvPackage[PACKAGE_BUFFER_SIZE];
-					// Package buffer;
-					memset(&buffer, 0, sizeof(Package)); // clean to 0
-					int ret = recv(event_array[i].data.fd, recvPackage, PACKAGE_BUFFER_SIZE, 0);
-					if (ret <= 0) {
-						close(event_array[i].data.fd);
-						epoll_ctl(epoll_fd, EPOLL_CTL_DEL,
-								  event_array[i].data.fd, &event);
-						continue;
-					}
-					memcpy(&buffer, recvPackage, sizeof(Package));
-					packages[i] = (buffer);// may use std::move
-#ifdef DEBUG_OUTPUT
-					printf("recv over id:%u, key:%d, value:%d\n", (unsigned int) buffer.id, buffer.key.id,
-						   buffer.value.id);
-#endif
-					
-					// int ret = recv(event_array[i].data.fd, buf, BUF_SIZE, 0);
-					// if(ret <= 0) {
-					// 	close(event_array[i].data.fd);
-					// 	epoll_ctl(epoll_fd, EPOLL_CTL_DEL,
-					// 	          event_array[i].data.fd, &event);
-					// 	continue;
-					// }
-					
-					//设置用于注测的写操作事件
-					event.data.fd = sockfd;
-					
-					//修改sockfd上要处理的事件为EPOLLOUT
-#ifdef EDGE_TRIGGERED
-					event.events = EPOLLOUT | EPOLLET;
-#else
-					event.events = EPOLLOUT;
-#endif
-					
-					epoll_ctl(epoll_fd, EPOLL_CTL_MOD, sockfd, &event);
-					
-				} else {
-					// 如果有数据发送
-					if (event_array[i].events & EPOLLOUT) {
-						sockfd = event_array[i].data.fd;
-						Result result(packages[i].id);
-						int sendbytes = send(sockfd, (char *) &result, sizeof(Result), 0);
-						if (sendbytes < 0) {
-							perror("send failed.\n");
-						}
-#ifdef DEBUG_OUTPUT
-						printf("send the Result, id:%d\n", result.id);
-#endif
-						//设置用于读操作的文件描述符
-						// write(sockfd, line, n);
-						
-						//设置用于注测的读操作事件
-						event.data.fd = sockfd;
-						
-						//修改sockfd上要处理的事件为EPOLIN
-#ifdef EDGE_TRIGGERED
-						event.events = EPOLLIN | EPOLLET;
-#else
-						event.events = EPOLLIN;
-#endif
-						
-						epoll_ctl(epoll_fd, EPOLL_CTL_MOD, sockfd, &event);
-						
-					}
-				}
-#endif
-#endif
 			}
 		}
 	}

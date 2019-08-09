@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include <csignal>
+#include <stack>
+#include <list>
 #include <unordered_map>
 
 #include "data.h"
@@ -31,6 +33,9 @@ using namespace std;
  * global variables
  * -------------------------------------------------
  */
+// todo profiling purpose
+static unsigned long JobCountLimit = 2001000L;
+
 static const int NUM_WORKERS = 20;
 static const int ECHO_SERVER_PORT = 6000;
 static const int NUM_FD = 1200;
@@ -45,8 +50,7 @@ static volatile bool RUNNING_FLAG = true;
 // event for the server
 static struct epoll_event event;
 
-static unsigned long long JobCount = 0;
-// static unordered_map<int, Package> ClientInfoMap;
+static unsigned long JobCount = 0;
 static Package ClientInfoArr[NUM_FD];
 static ProcessStatus FDProcessStatusArr[NUM_FD];
 // only 1 shared ring buffer
@@ -87,7 +91,7 @@ void InitializeClientInfoArr() {
 
 // back end thread
 void ProcessJob(int i) {
-	while (true) {
+	while (RUNNING_FLAG) {
 		struct epoll_event epollEvent = EpollEventRingBuffer.Pop();
 		// deal with the epollEvent
 		if ((epollEvent.events) & EPOLLIN) {
@@ -274,6 +278,21 @@ void ProgramTerminated() {
 	close(server_fd);
 }
 
+void WasteTime() {
+	unsigned long i = 1;
+	std::list<unsigned long> wasteList;
+	while (JobCount < JobCountLimit) {
+		wasteList.emplace_back(i);
+		i += 1;
+		for (auto &it :wasteList) {
+			if (it == i) {
+				printf("i is\t%ld\n", (long) i);
+			}
+		}
+	}
+	printf("i is\t%ld\n", (long) i);
+}
+
 
 int main(int argc, char *argv[]) {
 	printf("start %s \n", argv[0]);
@@ -339,6 +358,12 @@ int main(int argc, char *argv[]) {
 	
 	// initialize Workers thread to work
 	std::vector<std::thread> workers(NUM_WORKERS);
+
+#ifdef WASTE_TIME
+	// todo testing detached thread
+	std::thread test(WasteTime);
+	test.detach();
+#endif
 	
 	// do initialization
 	InitializeWorkers(workers);
@@ -348,6 +373,9 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 	int nfds_old = 0;
 #endif
+	
+	int totalNFDS = 0;
+	int smallNFDS = 0;
 	
 	while (RUNNING_FLAG) {
 		// waiting for epoll to happen
@@ -369,13 +397,19 @@ int main(int argc, char *argv[]) {
 		}
 #endif
 		
+		// todo try with epoll_clt delete,
+		// todo try with print,see how many active epoll wait are there
+#ifndef DEBUG_OUTPUT
+		// if (nfds > 0 && nfds < 10) {
+		// 	printf("\nnumber of fd are small: %d\n", nfds);
+		// }
+		++totalNFDS;
+		if (nfds > 0 && nfds < 10) {
+			++smallNFDS;
+		}
+#endif
+		
 		for (i = 0; i < nfds; ++i) {
-			
-			// todo debug code
-			if (JobCount == 20001000LL) {
-				printf("reach the JobCount\n");
-				exit(0);
-			}
 			
 			Package buffer;
 			// if detect a new client connect to the server's socket, 
@@ -388,7 +422,7 @@ int main(int argc, char *argv[]) {
 					// output client fd
 					cout << "Error, new_client_fd: " << new_client_fd << endl;
 #endif
-					exit(1);
+					continue; // test whether this work
 				}
 				SetNonBlocking(new_client_fd);
 
@@ -436,7 +470,6 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 					printf("fd: %d \t waiting for ready_to_receive_ condition \n", event_array[i].data.fd);
 #endif
-					continue;
 				} else {
 					if ((event_array[i].events & EPOLLOUT)) {
 						if (FDProcessStatusArr[event_array[i].data.fd].ready_to_send_) {
@@ -454,15 +487,18 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG_OUTPUT
 						printf("fd: %d \t waiting for ready_to_send_ condition \n", event_array[i].data.fd);
 #endif
-						continue;
 					}
-					perror("ERROR, events wrong type\n");
 				}
-				continue;
 			}
+
+#ifdef PROFILING
+			if (JobCount == JobCountLimit) {
+				printf("reach the JobCount\n");
+				cout<<"ratio:"<<1.0*smallNFDS/totalNFDS<<endl;
+				exit(0);
+			}
+#endif
 		}
-		
-		
 	}
 	atexit(ProgramTerminated);
 	return 0;
