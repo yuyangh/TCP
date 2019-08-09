@@ -24,11 +24,6 @@
 
 class Client {
 public:
-	std::string serverAddress="127.0.0.1";
-	int socketServer;
-	int server_port = SERVER_PORT;
-	struct sockaddr_in socketAddressIn;
-	
 	Client() : serverAddress("127.0.0.1"), socketServer(socket(AF_INET, SOCK_STREAM, 0)) {
 		socketAddressInit();
 		connectServer();
@@ -140,6 +135,12 @@ public:
 		}
 #endif
 	}
+	
+private:
+	std::string serverAddress="127.0.0.1";
+	int socketServer;
+	int server_port = SERVER_PORT;
+	struct sockaddr_in socketAddressIn;
 };
 
 #endif //TCPEXAMPLE_CLIENT_H
